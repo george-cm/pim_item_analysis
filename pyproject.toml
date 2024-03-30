@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "pim-item-analysis"
+version = "0.1.0"
+description = "Helps speed up PIM item analysis"
+authors = ["George Murgă <george.murga+github@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.3.4"
+pytest = "^8.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff.isort]
+force-single-line = true
+
+[tool.isort]
+force-single-line = true
