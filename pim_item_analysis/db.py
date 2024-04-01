@@ -1,12 +1,15 @@
-"""Import datat from CSV files into the database"""
+"""Database module for PIM item analysis project.
 
-import csv
+Provides functions for creating, configuring, and interacting with a SQLite
+database for storing and analyzing PIM item data.
+"""
+
 import re
 import sqlite3
 import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 from typing import Literal
 
 
@@ -126,49 +129,27 @@ def db_get_table_columns(conn: sqlite3.Connection, table: str) -> List[str]:
     return [description[0] for description in cur.description]
 
 
-def db_create_tables(conn: sqlite3.Connection):
-    """Create tables in the database"""
+def db_create_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    columns: Dict[str, str],
+    unique_index_columns: Optional[List[str]] = None,
+) -> None:
+    """Create table in the database"""
+    fields = [f"[{column}] {column_type}" for column, column_type in columns.items()]
     cur: sqlite3.Cursor = conn.cursor()
-    sql: str = """
-        CREATE TABLE IF NOT EXISTS item_availability (
-            ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            EXPORT_DATE datetime NOT NULL,
-            Status,
-            [Item Source System],
-            [Business Unit],
-            [Item no.],
-            SKU,
-            [Item Short Description (English (US))],
-            [Parent Product no.],
-            [Parent Product Name (English (US))],
-            [Ready for Enrichment],
-            [Ready for Ecommerce],
-            [Ecommerce Attribute Enrichment],
-            [Item Approval],
-            [Publish Ready Flag Ecomm],
-            [Publish Override Ecomm],
-            [Start Date Ecomm],
-            [End Date Ecomm],
-            Comment,
-            [Publish Ready Flag AEM],
-            [Publish Override AEM],
-            [Start Date AEM],
-            [End Date AEM],
-            [Publish to Ecomm],
-            [Created on (PIM)],
-            [Created by (PIM).User name],
-            [Created by (PIM).E-mail],
-            [Last changed on (PIM)],
-            [Last changed by (PIM).User name],
-            [Last changed by (PIM).E-mail],
-            [Deleted on (PIM)],
-            [Item Delete Flag],
-            [Kind Of Material],
-            [SKU Target Market]
-        )
-    """
+    sql: str = f"""
+            CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(fields)})
+        """
     cur.execute(sql)
     conn.commit()
+    if unique_index_columns:
+        sql = f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS {table_name}_unique_index ON {table_name}
+                ({', '.join([f"[{x}]" for x in unique_index_columns])})
+            """
+        cur.execute(sql)
+        conn.commit()
 
 
 def get_export_date_from_file(filepath: Path) -> datetime.datetime:
@@ -217,47 +198,6 @@ def file_suffix(file_path: Path) -> str:
 
 def main():
     """Main function"""
-    current_dir = Path(__file__).parent
-    print(f"Current directory: {current_dir}")
-    db_file: str = "pim_item_analysis.db"
-    conn: sqlite3.Connection = db_create_connection(db_file)
-    with db_create_connection(db_file) as conn:
-        item_availability_file = (
-            current_dir / "../input/test_data/"
-            "item_availability_Static item list (4 items)_20240329145236_v10.csv"
-        )
-        current_file_suffix = file_suffix(item_availability_file)
-        export_date = get_export_date_from_file(item_availability_file)
-        print(current_file_suffix)
-        print(export_date)
-        db_drop_tables(conn, [current_file_suffix])
-        db_create_tables(conn)
-        with item_availability_file.open(encoding="utf-8") as f:
-            csv_reader = csv.reader(f)
-            header = ["EXPORT_DATE"] + next(csv_reader)
-            columns = ", ".join([f"[{x}]" for x in header])
-            sql = f"""
-                INSERT INTO {current_file_suffix} ({columns})
-                VALUES ({','.join(['?' for _ in header])})
-            """
-            data = [[export_date] + row for row in csv_reader]
-
-            conn.executemany(sql, data)
-
-            conn.commit()
-        for row in conn.execute("SELECT * FROM item_availability").fetchall():
-            print(row)
-
-        print("\n\n==============\n\n")
-
-        for row in conn.execute(
-            """
-                    SELECT * FROM item_availability
-                    WHERE EXPORT_DATE >= ?
-                """,
-            (datetime.datetime(2024, 3, 28),),
-        ).fetchall():
-            print(row)
 
 
 if __name__ == "__main__":

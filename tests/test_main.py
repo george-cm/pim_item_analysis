@@ -1,27 +1,30 @@
-# test_import_data.py
+"""test_main.py"""
 
+# pylint: disable=W0621:redefined-outer-name,C0116:missing-function-docstring
+
+from pathlib import Path
 import sqlite3
 import pytest
-from pim_item_analysis.import_data import (
+from pim_item_analysis.db import (
     db_create_connection,
     db_drop_tables,
     db_trim_column_in_table,
     db_add_column,
-    db_create_tables,
+    db_create_table,
 )
 
 
 @pytest.fixture
-def db_file(tmp_path):
+def db_file(tmp_path: Path) -> Path:
     return tmp_path / "test.db"
 
 
 @pytest.fixture
-def conn(db_file):
+def conn(db_file: Path) -> sqlite3.Connection:
     return db_create_connection(db_file)
 
 
-def test_db_create_connection(db_file):
+def test_db_create_connection(db_file: Path) -> None:
     conn = db_create_connection(db_file)
     assert isinstance(conn, sqlite3.Connection)
 
@@ -61,20 +64,21 @@ def test_db_add_column(conn):
     assert info[1][2] == "INTEGER"
 
 
-def test_db_create_tables(conn):
-    db_create_tables(conn)
-    # Verify item_availability table was created
+def test_db_create_table(conn):
+    columns = {"id": "integer primary key", "name": "text", "count": "integer"}
+    db_create_table(conn, "test", columns)
+
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = cur.fetchall()
-    assert ("item_availability",) in tables
+    cur.execute("PRAGMA table_info(test)")
 
-    # Verify columns
-    cur.execute("PRAGMA table_info(item_availability);")
-    columns = cur.fetchall()
-    assert len(columns) == 34
+    info = cur.fetchall()
+    assert len(info) == 3
 
-    # Spot check some columns
-    assert columns[0][1] == "ID"
-    assert columns[1][1] == "EXPORT_DATE"
-    assert columns[2][1] == "Status"
+    assert info[0][1] == "id"
+    assert info[0][2].lower() == "integer"
+
+    assert info[1][1] == "name"
+    assert info[1][2].lower() == "text"
+
+    assert info[2][1] == "count"
+    assert info[2][2].lower() == "integer"
