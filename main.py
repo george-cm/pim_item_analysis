@@ -24,7 +24,7 @@ def main() -> None:
         description="Analyze PIM item data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (  # pylint: disable=E1136:unsubscriptable-object
         parser.add_subparsers(
             title="subcommands",
             description="valid subcommands",
@@ -90,12 +90,15 @@ def list_data(args) -> None:
     with db_create_connection(db_file) as conn:
         cursor: sqlite3.Cursor = conn.cursor()
         result = cursor.execute(f"""
-            SELECT DISTINCT [export_date]
+            SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
             FROM item_availability
+            GROUP BY export_date
             ORDER BY export_date {'DESC' if args.descending else 'ASC'}
         """)
+        print(f"\nExport date{' ' * (19 - len('Export date'))}\tItem count")
+        print(f"{'-' * 19}\t----------")
         for row in result:
-            print(row[0].strftime("%Y/%m/%d %H:%M:%S"))
+            print(f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]}")
 
 
 def load_data(args) -> None:
