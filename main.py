@@ -100,7 +100,7 @@ def list_data(args) -> None:
         print(f"\nExport date{' ' * (19 - len('Export date'))}\tItem count")
         print(f"{'-' * 19}\t----------")
         for row in result:
-            print(f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]}")
+            print(f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}")
 
 
 def load_data(args) -> None:
