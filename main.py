@@ -12,6 +12,9 @@ from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_drop_tables
 from pim_item_analysis.db import file_suffix
 from pim_item_analysis.db import get_export_date_from_file
+from pim_item_analysis.db import register_adapters_and_converters
+
+register_adapters_and_converters()
 
 
 def main() -> None:
@@ -21,17 +24,20 @@ def main() -> None:
         description="Analyze PIM item data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    subparsers = parser.add_subparsers(
-        title="subcommands",
-        description="valid subcommands",
-        help="additional help",
-        required=True,
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser] = (
+        parser.add_subparsers(
+            title="subcommands",
+            description="valid subcommands",
+            help="additional help",
+            required=True,
+        )
     )
 
-    # create the parser for the "a" command
-    parser_load_data = subparsers.add_parser(
+    # create the parser for the "load_data" command
+    parser_load_data: argparse.ArgumentParser = subparsers.add_parser(
         "load_data",
         help="Load data from a folder containing CSV files of PIM item data into the database.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser_load_data.add_argument(
         "input_folder", type=str, help="Folder containing CSV files."
@@ -52,8 +58,44 @@ def main() -> None:
     )
     parser_load_data.set_defaults(func=load_data)
 
+    # create the parser for the "list" command
+    parser_list: argparse.ArgumentParser = subparsers.add_parser(
+        "list",
+        help="List the datasets in the database.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_list.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    parser_list.add_argument(
+        "--descending",
+        "-d",
+        action="store_true",
+        help="List in descending order.",
+        default=False,
+    )
+    parser_list.set_defaults(func=list_data)
     args = parser.parse_args()
     args.func(args)
+
+
+def list_data(args) -> None:
+    """List the datasets in the database"""
+    db_file = args.db_file
+    conn: sqlite3.Connection = db_create_connection(db_file)
+    with db_create_connection(db_file) as conn:
+        cursor: sqlite3.Cursor = conn.cursor()
+        result = cursor.execute(f"""
+            SELECT DISTINCT [export_date]
+            FROM item_availability
+            ORDER BY export_date {'DESC' if args.descending else 'ASC'}
+        """)
+        for row in result:
+            print(row[0].strftime("%Y/%m/%d %H:%M:%S"))
 
 
 def load_data(args) -> None:

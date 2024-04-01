@@ -28,30 +28,32 @@ def adapt_datetime_epoch(val):
     return int(val.timestamp())
 
 
-sqlite3.register_adapter(datetime.date, adapt_date_iso)
-sqlite3.register_adapter(datetime.datetime, adapt_datetime_iso)
-# sqlite3.register_adapter(datetime.datetime, adapt_datetime_epoch)
-
-
 def convert_date(val):
     """Convert ISO 8601 date to datetime.date object."""
-    return datetime.date.fromisoformat(val)
+    return datetime.date.fromisoformat(val.decode("utf-8"))
 
 
 def convert_datetime(val):
     """Convert ISO 8601 datetime to datetime.datetime object."""
-    print(f"convert_datetime: {val=}")
-    return datetime.datetime.fromisoformat(val)
+    return datetime.datetime.fromisoformat(val.decode("utf-8"))
 
 
 def convert_timestamp(val):
     """Convert Unix epoch timestamp to datetime.datetime object."""
-    return datetime.datetime.fromtimestamp(val)
+    return datetime.datetime.fromtimestamp(val.decode("utf-8"))
 
 
-sqlite3.register_converter("date", convert_date)
-sqlite3.register_converter("datetime", convert_datetime)
-sqlite3.register_converter("timestamp", convert_timestamp)
+def register_adapters_and_converters() -> None:
+    """Register adapters and converters for SQLite."""
+    sqlite3.register_adapter(datetime.date, adapt_date_iso)
+    sqlite3.register_adapter(datetime.datetime, adapt_datetime_iso)
+    # sqlite3.register_adapter(datetime.datetime, adapt_datetime_epoch)
+    sqlite3.register_converter("date", convert_date)
+    sqlite3.register_converter("datetime", convert_datetime)
+    sqlite3.register_converter("timestamp", convert_timestamp)
+
+
+register_adapters_and_converters()
 
 
 @lru_cache(maxsize=None)
@@ -70,8 +72,8 @@ def db_create_connection(db_file) -> sqlite3.Connection:
     try:
         conn: sqlite3.Connection = sqlite3.connect(
             db_file,
-            # detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            detect_types=sqlite3.PARSE_COLNAMES,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+            # detect_types=sqlite3.PARSE_COLNAMES,
         )
         conn.create_function("REGEXP", 2, regexp)
     except sqlite3.Error as e:
