@@ -2,10 +2,12 @@
 
 import argparse
 import csv
-from datetime import datetime
 import sqlite3
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator
+from typing import List
+from typing import Optional
 
 from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_table
@@ -79,17 +81,17 @@ def main() -> None:
         default=False,
     )
     parser_list.set_defaults(func=list_data)
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
     args.func(args)
 
 
 def list_data(args) -> None:
     """List the datasets in the database"""
-    db_file = args.db_file
+    db_file: str = args.db_file
     conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
         cursor: sqlite3.Cursor = conn.cursor()
-        result = cursor.execute(f"""
+        result: sqlite3.Cursor = cursor.execute(f"""
             SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
             FROM item_availability
             GROUP BY export_date
@@ -106,7 +108,7 @@ def load_data(args) -> None:
     current_dir = Path(__file__).parent
     print(f"Current directory: {current_dir}")
     # db_file: str = "pim_item_analysis.db"
-    db_file = args.db_file
+    db_file: str = args.db_file
 
     input_folder = Path(args.input_folder)
 
@@ -115,7 +117,7 @@ def load_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
         for file_path in input_folder.glob("*.csv"):
-            current_file_suffix = file_suffix(file_path)
+            current_file_suffix: str = file_suffix(file_path)
 
             if current_file_suffix == "item_availability":
                 index_columns = ["export_date", "Item no."]
@@ -144,17 +146,17 @@ def load_data(args) -> None:
             else:
                 index_columns = None
 
-            inserted_rows_count = load_file_into_db(
+            inserted_rows_count: int = load_file_into_db(
                 conn,
                 file_path,
                 drop_table_first=args.drop_tables,
                 unique_index_columns=index_columns,
             )
             print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
-            print(f"============= Rows from {current_file_suffix} =============")
-            for row in conn.execute(f"SELECT * FROM {current_file_suffix}").fetchall():
-                print(row)
-            print(f"============= End {current_file_suffix} =============\n")
+            # print(f"============= Rows from {current_file_suffix} =============")
+            # for row in conn.execute(f"SELECT * FROM {current_file_suffix}").fetchall():
+            #     print(row)
+            # print(f"============= End {current_file_suffix} =============\n")
 
 
 def load_file_into_db(
@@ -164,13 +166,13 @@ def load_file_into_db(
     unique_index_columns: Optional[List[str]] = None,
 ) -> int:
     """Load file into the database"""
-    current_file_suffix = file_suffix(file_path)
-    export_date = get_export_date_from_file(file_path)
+    current_file_suffix: str = file_suffix(file_path)
+    export_date: datetime = get_export_date_from_file(file_path)
     print(current_file_suffix)
     print(export_date)
     with file_path.open(encoding="utf-8") as f:
-        csv_reader = csv.reader(f)
-        header = next(csv_reader)
+        csv_reader: Iterator[List[str]] = csv.reader(f)
+        header: List[str] = next(csv_reader)
         columns: list[str] = [x for x in (["export_date"] + header)]
         columns_str: str = ", ".join([f"[{x}]" for x in columns])
         extra_fields: dict[str, str] = {
