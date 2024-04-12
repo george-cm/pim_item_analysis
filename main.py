@@ -1,20 +1,23 @@
 """Import data from CSV files into the database"""
 
 import argparse
-import csv
+import datetime
 import sqlite3
-from datetime import datetime
 from pathlib import Path
-from typing import Iterator
 from typing import List
 from typing import Optional
 
-from pim_item_analysis.db import db_create_connection
-from pim_item_analysis.db import db_create_table
-from pim_item_analysis.db import db_drop_tables
+from pim_item_analysis.db import (
+    db_add_label,
+    db_create_connection,
+    db_create_label_tables,
+    db_get_hybris_datasets,
+    db_get_pim_datasets,
+)
 from pim_item_analysis.db import file_suffix
-from pim_item_analysis.db import get_export_date_from_file
 from pim_item_analysis.db import register_adapters_and_converters
+from pim_item_analysis.loaders import load_excel_to_db, load_file_into_db
+# from pim_item_analysis.views import display_in_table
 
 register_adapters_and_converters()
 
@@ -36,29 +39,63 @@ def main() -> None:
     )
 
     # create the parser for the "load_data" command
-    parser_load_data: argparse.ArgumentParser = subparsers.add_parser(
-        "load_data",
+    parser_load_pim_data: argparse.ArgumentParser = subparsers.add_parser(
+        "load_pim_data",
         help="Load data from a folder containing CSV files of PIM item data into the database.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_load_data.add_argument(
+    parser_load_pim_data.add_argument(
         "input_folder", type=str, help="Folder containing CSV files."
     )
-    parser_load_data.add_argument(
+    parser_load_pim_data.add_argument(
         "--db_file",
         "-dbf",
         type=str,
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    parser_load_data.add_argument(
+    parser_load_pim_data.add_argument(
         "--drop_tables",
         "-dt",
         action="store_true",
         help="Drop tables before loading data.",
         default=False,
     )
-    parser_load_data.set_defaults(func=load_data)
+    parser_load_pim_data.add_argument(
+        "--add_label",
+        "-al",
+        type=str,
+        help="Add a label to the loaded data.",
+        default=None,
+    )
+    parser_load_pim_data.set_defaults(func=load_data)
+
+    # create the parser for the load_hybris_data command
+    parser_load_hybris_data: argparse.ArgumentParser = subparsers.add_parser(
+        "load_hybris_data",
+        help="Load data from a xlsx Excel file containing Hybris data.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_load_hybris_data.add_argument(
+        "hybris_file",
+        type=str,
+        help="Path to Hybris file. Should be named something like 'Sku status - dd.mm.xlsx'",
+    )
+    parser_load_hybris_data.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    parser_load_hybris_data.add_argument(
+        "--drop_tables",
+        "-dt",
+        action="store_true",
+        help="Drop tables before loading data.",
+        default=False,
+    )
+    parser_load_hybris_data.set_defaults(func=load_hybris_data)
 
     # create the parser for the "list" command
     parser_list: argparse.ArgumentParser = subparsers.add_parser(
@@ -81,8 +118,83 @@ def main() -> None:
         default=False,
     )
     parser_list.set_defaults(func=list_data)
+
+    # create the parser for adding a label to a dataset
+    parser_add_label: argparse.ArgumentParser = subparsers.add_parser(
+        "add_label",
+        help="Add a label to a dataset.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_add_label.add_argument(
+        "dataset_type", choices=["pim", "hybris"], help="Dataset type, pim or hybris."
+    )
+    parser_add_label.add_argument(
+        "dataset_number",
+        type=int,
+        help="Number of the dataset to add a label to, from the list command."
+        " Overwrites any existing label.",
+    )
+    parser_add_label.add_argument("dataset_label", type=str, help="Label to add.")
+    parser_add_label.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    parser_add_label.set_defaults(func=add_label)
+
     args: argparse.Namespace = parser.parse_args()
     args.func(args)
+
+
+def add_label(args) -> None:
+    """Add a label to a dataset"""
+    db_file: str = args.db_file
+    dataset_number: int = args.dataset_number
+    label: str = args.dataset_label
+    dataset_type: str = args.dataset_type
+    selected_date: datetime.datetime
+    with db_create_connection(db_file) as conn:
+        db_create_label_tables(conn)
+        if dataset_type == "pim":
+            selected_date = db_get_pim_datasets(conn)[dataset_number - 1][0]  # type: ignore
+        elif dataset_type == "hybris":
+            selected_date = db_get_hybris_datasets(conn)[dataset_number - 1][0]  # type: ignore
+        else:
+            raise ValueError(f"Unknown dataset type {dataset_type}")
+        db_add_label(conn, db_file, dataset_type, selected_date, label)
+        # conn.execute(
+        #     f"""
+        #     INSERT INTO labels_{dataset_type} (export_date, label)
+        #     VALUES ('{selected_date}', '{label}')
+        #     ON CONFLICT (export_date) DO UPDATE SET label = '{label}'
+        #     """
+        # )
+        # result = conn.execute(
+        #     f"""
+        #     SELECT * FROM labels_{dataset_type}
+        #     """
+        # )
+        # print(list(result))
+
+
+def load_hybris_data(args) -> None:
+    """Load data from a xlsx Excel file containing Hybris data"""
+    db_file: str = args.db_file
+    hybris_file: Path = Path(args.hybris_file)
+    conn: sqlite3.Connection = db_create_connection(db_file)
+    index_columns: List[str] = ["export_date", "Item no."]
+    # print(f"{args.drop_tables=}")
+    with db_create_connection(db_file) as conn:
+        db_create_label_tables(conn)
+        inserted_rows_count = load_excel_to_db(
+            conn,
+            hybris_file,
+            drop_table_first=args.drop_tables,
+            unique_index_columns=index_columns,
+        )
+        print(f"Inserted {inserted_rows_count} rows from {hybris_file}\n")
 
 
 def list_data(args) -> None:
@@ -90,17 +202,43 @@ def list_data(args) -> None:
     db_file: str = args.db_file
     conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
-        cursor: sqlite3.Cursor = conn.cursor()
-        result: sqlite3.Cursor = cursor.execute(f"""
-            SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
-            FROM item_availability
-            GROUP BY export_date
-            ORDER BY export_date {'DESC' if args.descending else 'ASC'}
-        """)
-        print(f"\nExport date{' ' * (19 - len('Export date'))}\tItem count")
-        print(f"{'-' * 19}\t----------")
-        for row in result:
-            print(f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}")
+        db_create_label_tables(conn)
+        pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(
+            conn
+        )
+        print("\nPIM data")
+        print("=" * len("PIM data"))
+        print(
+            "\nDataset\nNumber\t"
+            "Export date string\t"
+            f"Export date{' ' * (19 - len('Export date'))}\t"
+            "Item count\t"
+            "Label"
+        )
+        print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
+        for i, row in enumerate(pim_datasets, start=1):
+            print(
+                f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
+                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}"  # type: ignore
+            )
+        hybris_datasets: List[List[str | datetime.datetime | int]] = (
+            db_get_hybris_datasets(conn)
+        )
+        print("\nHybris data")
+        print("=" * len("Hybris data"))
+        print(
+            "\nDataset\nNumber\t"
+            "Export date string\t"
+            f"Export date{' ' * (19 - len('Export date'))}\t"
+            "Item count\t"
+            "Label"
+        )
+        print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
+        for i, row in enumerate(hybris_datasets, start=1):
+            print(
+                f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
+                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}"  # type: ignore
+            )
 
 
 def load_data(args) -> None:
@@ -114,8 +252,8 @@ def load_data(args) -> None:
 
     index_columns: Optional[List[str]]
 
-    conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
+        db_create_label_tables(conn)
         for file_path in input_folder.glob("*.csv"):
             current_file_suffix: str = file_suffix(file_path)
 
@@ -157,47 +295,6 @@ def load_data(args) -> None:
             # for row in conn.execute(f"SELECT * FROM {current_file_suffix}").fetchall():
             #     print(row)
             # print(f"============= End {current_file_suffix} =============\n")
-
-
-def load_file_into_db(
-    conn: sqlite3.Connection,
-    file_path: Path,
-    drop_table_first: bool = False,
-    unique_index_columns: Optional[List[str]] = None,
-) -> int:
-    """Load file into the database"""
-    current_file_suffix: str = file_suffix(file_path)
-    export_date: datetime = get_export_date_from_file(file_path)
-    print(current_file_suffix)
-    print(export_date)
-    with file_path.open(encoding="utf-8") as f:
-        csv_reader: Iterator[List[str]] = csv.reader(f)
-        header: List[str] = next(csv_reader)
-        columns: list[str] = [x for x in (["export_date"] + header)]
-        columns_str: str = ", ".join([f"[{x}]" for x in columns])
-        extra_fields: dict[str, str] = {
-            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-            "export_date": "DATETIME NOT NULL",
-        }
-        fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in header}}
-        if drop_table_first:
-            db_drop_tables(conn, [current_file_suffix])
-        db_create_table(
-            conn, current_file_suffix, fields, unique_index_columns=unique_index_columns
-        )
-
-        sql: str = f"""
-            INSERT OR IGNORE INTO {current_file_suffix} ({columns_str})
-            VALUES ({','.join(['?' for _ in columns])})
-        """
-        data: List[List[str | datetime]] = [[export_date] + row for row in csv_reader]
-
-        cursor = conn.cursor()
-        cursor.executemany(sql, data)
-        inserted_row_count = cursor.rowcount
-
-        conn.commit()
-        return inserted_row_count
 
 
 if __name__ == "__main__":

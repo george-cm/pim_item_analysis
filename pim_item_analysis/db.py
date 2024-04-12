@@ -4,13 +4,16 @@ Provides functions for creating, configuring, and interacting with a SQLite
 database for storing and analyzing PIM item data.
 """
 
+import datetime
 import re
 import sqlite3
-import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
+from typing import List
 from typing import Literal
+from typing import Optional
+from typing import Union
 
 
 def adapt_date_iso(val):
@@ -131,6 +134,15 @@ def db_get_table_columns(conn: sqlite3.Connection, table: str) -> List[str]:
     return [description[0] for description in cur.description]
 
 
+def normalize_name(name: str) -> str:
+    """Normalize name for use in database."""
+    name = name.lower()
+    replacement_pattern: re.Pattern[str] = re.compile(r"[^a-z0-9]+")
+    name = replacement_pattern.sub("_", name)
+    name = name.strip("_")
+    return name
+
+
 def db_create_table(
     conn: sqlite3.Connection,
     table_name: str,
@@ -138,7 +150,9 @@ def db_create_table(
     unique_index_columns: Optional[List[str]] = None,
 ) -> None:
     """Create table in the database"""
+    # table_name: str = normalize_name(table_name)
     fields = [f"[{column}] {column_type}" for column, column_type in columns.items()]
+    # print(f"db_create_table {fields=}")
     cur: sqlite3.Cursor = conn.cursor()
     sql: str = f"""
             CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(fields)})
@@ -152,6 +166,52 @@ def db_create_table(
             """
         cur.execute(sql)
         conn.commit()
+
+
+def db_create_label_tables(conn: sqlite3.Connection) -> None:
+    """Create labels tables in the database."""
+    conn.execute("""
+            CREATE TABLE IF NOT EXISTS labels_pim (
+                id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+                export_date DATETIME NOT NULL UNIQUE,
+                label       TEXT
+            )
+            """)
+    conn.execute("""
+            CREATE TABLE IF NOT EXISTS labels_hybris (
+                id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+                export_date DATETIME NOT NULL UNIQUE,
+                label       TEXT
+            )
+            """)
+
+
+def db_get_pim_datasets(
+    conn: sqlite3.Connection, descending: bool = False
+) -> List[List[str | datetime.datetime | int]]:
+    """Get list of PIM datasets."""
+    cursor: sqlite3.Cursor = conn.cursor()
+    datasets: sqlite3.Cursor = cursor.execute(f"""
+        SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
+        FROM item_availability
+        GROUP BY export_date
+        ORDER BY export_date {'DESC' if descending else 'ASC'}
+    """)
+    return list(datasets)
+
+
+def db_get_hybris_datasets(
+    conn: sqlite3.Connection, descending: bool = False
+) -> List[List[str | datetime.datetime | int]]:
+    """Get list of PIM datasets."""
+    cursor: sqlite3.Cursor = conn.cursor()
+    datasets: sqlite3.Cursor = cursor.execute(f"""
+        SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
+        FROM skus_status
+        GROUP BY export_date
+        ORDER BY export_date {'DESC' if descending else 'ASC'}
+    """)
+    return list(datasets)
 
 
 def get_export_date_from_file(filepath: Path) -> datetime.datetime:
@@ -185,13 +245,35 @@ def get_export_date_from_file(filepath: Path) -> datetime.datetime:
     return datetime.datetime.strptime(text_date, dt_format)
 
 
-def file_suffix(file_path: Path) -> str:
+def db_add_label(conn, db_file, dataset_type, dataset_datetime, label):
+    """Add label to the lables table."""
+    with db_create_connection(db_file) as conn:
+        db_create_label_tables(conn)
+        conn.execute(
+            f"""
+            INSERT INTO labels_{dataset_type} (export_date, label)
+            VALUES ('{dataset_datetime}', '{label}')
+            ON CONFLICT (export_date) DO UPDATE SET label = '{label}'
+            """
+        )
+        # result = conn.execute(
+        #     f"""
+        #     SELECT * FROM labels_{dataset_type}
+        #     """
+        # )
+        # print(list(result))
+
+
+def file_suffix(file_path: Union[Path, str]) -> str:  # type: ignore
     """Get the file suffix."""
-    file_name_parts = file_path.stem.split("_")
+    if isinstance(file_path, str):
+        file_path = Path(file_path)
+    file_name_parts = normalize_name(file_path.stem).split("_")
     if len(file_name_parts) < 2:
         raise ValueError(
             f"File name should contain at least one underscore: {file_path.stem}"
         )
+    # check if the fist character in the second element of the list is a number
     if file_name_parts[1][0].isnumeric():
         return file_name_parts[0]
     else:
@@ -200,6 +282,7 @@ def file_suffix(file_path: Path) -> str:
 
 def main():
     """Main function"""
+    print("This module doesn't do anything on it's own.")
 
 
 if __name__ == "__main__":

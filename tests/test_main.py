@@ -11,6 +11,8 @@ from pim_item_analysis.db import (
     db_trim_column_in_table,
     db_add_column,
     db_create_table,
+    normalize_name,
+    file_suffix,
 )
 
 
@@ -82,3 +84,51 @@ def test_db_create_table(conn):
 
     assert info[2][1] == "count"
     assert info[2][2].lower() == "integer"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    (
+        ("", ""),
+        (" ", ""),
+        ("  ", ""),
+        ("a", "a"),
+        ("a ", "a"),
+        (" a", "a"),
+        (" a ", "a"),
+        ("a b", "a_b"),
+        ("a b ", "a_b"),
+        (" a b", "a_b"),
+        (" a b ", "a_b"),
+        ("a b c", "a_b_c"),
+        ("a b c ", "a_b_c"),
+        (" a b c", "a_b_c"),
+        ("Skus status - 11.04.xlsx", "skus_status_11_04_xlsx"),
+    ),
+)
+def test_normalize_name(name, expected) -> None:
+    assert normalize_name(name) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    (
+        (Path("a_a_a"), "a_a"),
+        (Path("skus_status_11_04_xlsx"), "skus_status"),
+        (
+            Path("item_pricing_Static item list (2 items)_20240411090811_v10.csv"),
+            "item_pricing",
+        ),
+        (
+            Path("item_pricing_Static item list (2 items)_20240411090811_v10.csv"),
+            "item_pricing",
+        ),
+        (
+            Path("structure_20240411090811_v10.csv"),
+            "structure",
+        ),
+        ("Skus status - 11.04.xlsx", "skus_status"),
+    ),
+)
+def test_file_suffix(name, expected) -> None:
+    assert file_suffix(name) == expected
