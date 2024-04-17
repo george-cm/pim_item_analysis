@@ -7,19 +7,20 @@ from pathlib import Path
 from typing import List
 from typing import Optional
 
-from pim_item_analysis.db import (
-    db_add_label,
-    db_create_connection,
-    db_create_label_tables,
-    db_get_hybris_datasets,
-    db_get_pim_datasets,
-)
+from pim_item_analysis.db import db_add_label
+from pim_item_analysis.db import db_create_connection
+from pim_item_analysis.db import db_create_label_tables
+from pim_item_analysis.db import db_get_hybris_datasets
+from pim_item_analysis.db import db_get_pim_datasets
 from pim_item_analysis.db import file_suffix
-from pim_item_analysis.db import register_adapters_and_converters
-from pim_item_analysis.loaders import load_excel_to_db, load_file_into_db
+
+# from pim_item_analysis.db import register_adapters_and_converters
+from pim_item_analysis.loaders import load_excel_to_db
+from pim_item_analysis.loaders import load_file_into_db
+
 # from pim_item_analysis.views import display_in_table
 
-register_adapters_and_converters()
+# register_adapters_and_converters()
 
 
 def main() -> None:
@@ -164,19 +165,6 @@ def add_label(args) -> None:
         else:
             raise ValueError(f"Unknown dataset type {dataset_type}")
         db_add_label(conn, db_file, dataset_type, selected_date, label)
-        # conn.execute(
-        #     f"""
-        #     INSERT INTO labels_{dataset_type} (export_date, label)
-        #     VALUES ('{selected_date}', '{label}')
-        #     ON CONFLICT (export_date) DO UPDATE SET label = '{label}'
-        #     """
-        # )
-        # result = conn.execute(
-        #     f"""
-        #     SELECT * FROM labels_{dataset_type}
-        #     """
-        # )
-        # print(list(result))
 
 
 def load_hybris_data(args) -> None:
@@ -217,9 +205,12 @@ def list_data(args) -> None:
         )
         print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
         for i, row in enumerate(pim_datasets, start=1):
+            label: str = str(row[2] if row[2] else "")
             print(
                 f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}"  # type: ignore
+                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
+                f"{row[1]:>10}\t"  # type: ignore
+                f"{label}"
             )
         hybris_datasets: List[List[str | datetime.datetime | int]] = (
             db_get_hybris_datasets(conn)
@@ -235,9 +226,12 @@ def list_data(args) -> None:
         )
         print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
         for i, row in enumerate(hybris_datasets, start=1):
+            label: str = str(row[2] if row[2] else "")
             print(
                 f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t{row[1]:>10}"  # type: ignore
+                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
+                f"{row[1]:>10}\t"  # type: ignore
+                f"{label}"
             )
 
 

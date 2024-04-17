@@ -192,10 +192,21 @@ def db_get_pim_datasets(
     """Get list of PIM datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
     datasets: sqlite3.Cursor = cursor.execute(f"""
-        SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
-        FROM item_availability
-        GROUP BY export_date
-        ORDER BY export_date {'DESC' if descending else 'ASC'}
+        SELECT "left"."export_date",
+               "left"."Item count",
+               "right"."label"
+        FROM
+            (
+                SELECT DISTINCT export_date,
+                                count
+                                ("Item no.") AS "Item count"
+                FROM item_availability
+                GROUP BY export_date
+                ORDER BY export_date {'DESC' if descending else 'ASC'}
+            )
+            AS "left"
+        LEFT JOIN labels_pim AS "right"
+            ON "left"."export_date" = "right"."export_date"
     """)
     return list(datasets)
 
@@ -206,10 +217,21 @@ def db_get_hybris_datasets(
     """Get list of PIM datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
     datasets: sqlite3.Cursor = cursor.execute(f"""
-        SELECT DISTINCT [export_date], count([Item no.]) AS [Item count]
-        FROM skus_status
-        GROUP BY export_date
-        ORDER BY export_date {'DESC' if descending else 'ASC'}
+        SELECT "left"."export_date",
+               "left"."Item count",
+               "right"."label"
+        FROM
+            (
+                SELECT DISTINCT export_date,
+                                count
+                                ("Item no.") AS "Item count"
+                FROM skus_status
+                GROUP BY export_date
+                ORDER BY export_date {'DESC' if descending else 'ASC'}
+            )
+            AS "left"
+        LEFT JOIN labels_hybris AS "right"
+            ON "left"."export_date" = "right"."export_date"
     """)
     return list(datasets)
 
@@ -245,16 +267,23 @@ def get_export_date_from_file(filepath: Path) -> datetime.datetime:
     return datetime.datetime.strptime(text_date, dt_format)
 
 
-def db_add_label(conn, db_file, dataset_type, dataset_datetime, label):
+def db_add_label(
+    conn: sqlite3.Connection,
+    db_file: Path | str,
+    dataset_type: Literal["pim", "hybris"],
+    dataset_datetime: datetime.datetime,
+    label: str,
+) -> None:
     """Add label to the lables table."""
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         conn.execute(
             f"""
             INSERT INTO labels_{dataset_type} (export_date, label)
-            VALUES ('{dataset_datetime}', '{label}')
-            ON CONFLICT (export_date) DO UPDATE SET label = '{label}'
-            """
+            VALUES (?, ?)
+            ON CONFLICT (export_date) DO UPDATE SET label = ?
+            """,
+            (dataset_datetime, label, label),
         )
         # result = conn.execute(
         #     f"""
