@@ -63,13 +63,13 @@ def main() -> None:
         default=False,
     )
     parser_load_pim_data.add_argument(
-        "--add_label",
-        "-al",
+        "--label",
+        "-l",
         type=str,
         help="Add a label to the loaded data.",
         default=None,
     )
-    parser_load_pim_data.set_defaults(func=load_data)
+    parser_load_pim_data.set_defaults(func=load_pim_data)
 
     # create the parser for the load_hybris_data command
     parser_load_hybris_data: argparse.ArgumentParser = subparsers.add_parser(
@@ -226,7 +226,7 @@ def list_data(args) -> None:
         )
         print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
         for i, row in enumerate(hybris_datasets, start=1):
-            label: str = str(row[2] if row[2] else "")
+            label = str(row[2] if row[2] else "")
             print(
                 f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
                 f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
@@ -235,7 +235,7 @@ def list_data(args) -> None:
             )
 
 
-def load_data(args) -> None:
+def load_pim_data(args) -> None:
     """Load data into the database"""
     current_dir = Path(__file__).parent
     print(f"Current directory: {current_dir}")
@@ -283,6 +283,7 @@ def load_data(args) -> None:
                 file_path,
                 drop_table_first=args.drop_tables,
                 unique_index_columns=index_columns,
+                label=args.label,
             )
             print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
             # print(f"============= Rows from {current_file_suffix} =============")
