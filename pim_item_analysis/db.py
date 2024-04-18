@@ -216,6 +216,8 @@ def db_get_hybris_datasets(
 ) -> List[List[str | datetime.datetime | int]]:
     """Get list of PIM datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
+    if not db_table_exists(conn, "skus_status"):
+        return []
     datasets: sqlite3.Cursor = cursor.execute(f"""
         SELECT "left"."export_date",
                "left"."Item count",
@@ -234,6 +236,19 @@ def db_get_hybris_datasets(
             ON "left"."export_date" = "right"."export_date"
     """)
     return list(datasets)
+
+
+def db_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    """Check if table exists in the database."""
+    cur: sqlite3.Cursor = conn.cursor()
+    sql: str = f"""
+        SELECT count(name)
+        FROM sqlite_master
+        WHERE type = 'table' AND
+            name = '{table_name}'
+    """
+    res = cur.execute(sql)
+    return bool(res.fetchone()[0])
 
 
 def get_export_date_from_file(filepath: Path) -> datetime.datetime:

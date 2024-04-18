@@ -15,7 +15,7 @@ from typing import Any, Iterator
 from typing import List
 from typing import Optional
 
-import openpyxl  # pylint: disable=import-error
+import openpyxl
 
 from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_drop_tables
@@ -48,7 +48,7 @@ def load_file_into_db(
         columns_str: str = ", ".join([f"[{x}]" for x in columns])
         extra_fields: dict[str, str] = {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-            "export_date": "DATETIME NOT NULL UNIQUE",
+            "export_date": "DATETIME NOT NULL",
         }
         fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[1:]}}
         if drop_table_first:
@@ -67,16 +67,16 @@ def load_file_into_db(
         cursor.executemany(sql, data)
         inserted_row_count = cursor.rowcount
         # add the label
-        if label:
-            sql: str = """
-                INSERT INTO labels_pim (export_date, label)
-                VALUES (?, ?)
-                ON CONFLICT (export_date) DO UPDATE SET label = ?
-                """
-            cursor.execute(
-                sql,
-                (export_date, label, label),
-            )
+        # if label:
+        #     sql: str = """
+        #         INSERT INTO labels_pim (export_date, label)
+        #         VALUES (?, ?)
+        #         ON CONFLICT (export_date) DO UPDATE SET label = ?
+        #         """
+        #     cursor.execute(
+        #         sql,
+        #         (export_date, label, label),
+        #     )
         conn.commit()
         return inserted_row_count
 
@@ -105,7 +105,7 @@ def load_excel_to_db(
     columns_str = ", ".join([f"[{x}]" for x in columns])
     extra_fields: dict[str, str] = {
         "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-        "export_date": "DATETIME NOT NULL UNIQUE",
+        "export_date": "DATETIME NOT NULL",
     }
     fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[1:]}}
     # print(f"{header=}")

@@ -17,6 +17,7 @@ from pim_item_analysis.db import file_suffix
 # from pim_item_analysis.db import register_adapters_and_converters
 from pim_item_analysis.loaders import load_excel_to_db
 from pim_item_analysis.loaders import load_file_into_db
+from pim_item_analysis.views import display_in_table
 
 # from pim_item_analysis.views import display_in_table
 
@@ -194,45 +195,86 @@ def list_data(args) -> None:
         pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(
             conn
         )
-        print("\nPIM data")
-        print("=" * len("PIM data"))
-        print(
-            "\nDataset\nNumber\t"
-            "Export date string\t"
-            f"Export date{' ' * (19 - len('Export date'))}\t"
-            "Item count\t"
-            "Label"
-        )
-        print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
-        for i, row in enumerate(pim_datasets, start=1):
-            label: str = str(row[2] if row[2] else "")
-            print(
-                f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
-                f"{row[1]:>10}\t"  # type: ignore
-                f"{label}"
-            )
         hybris_datasets: List[List[str | datetime.datetime | int]] = (
             db_get_hybris_datasets(conn)
         )
-        print("\nHybris data")
-        print("=" * len("Hybris data"))
-        print(
-            "\nDataset\nNumber\t"
-            "Export date string\t"
-            f"Export date{' ' * (19 - len('Export date'))}\t"
-            "Item count\t"
-            "Label"
+
+        # print("\nPIM data")
+        # print("=" * len("PIM data"))
+        # print(
+        #     "\nDataset\nNumber\t"
+        #     "Export date string\t"
+        #     f"Export date{' ' * (19 - len('Export date'))}\t"
+        #     "Item count\t"
+        #     "Label"
+        # )
+        # print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
+        # for i, row in enumerate(pim_datasets, start=1):
+        #     label: str = str(row[2] if row[2] else "")
+        #     print(
+        #         f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
+        #         f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
+        #         f"{row[1]:>10}\t"  # type: ignore
+        #         f"{label}"
+        #     )
+        # print("\nHybris data")
+        # print("=" * len("Hybris data"))
+        # print(
+        #     "\nDataset\nNumber\t"
+        #     "Export date string\t"
+        #     f"Export date{' ' * (19 - len('Export date'))}\t"
+        #     "Item count\t"
+        #     "Label"
+        # )
+        # print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
+        # for i, row in enumerate(hybris_datasets, start=1):
+        #     label = str(row[2] if row[2] else "")
+        #     print(
+        #         f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
+        #         f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
+        #         f"{row[1]:>10}\t"  # type: ignore
+        #         f"{label}"
+        #     )
+
+        header = [
+            "Dataset\nNumber",
+            "Export date string",
+            "Export date",
+            "Item count",
+            "Label",
+        ]
+
+        print("\nPIM data")
+        display_in_table(
+            header,
+            [
+                [
+                    i,
+                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[1],
+                    str(x[2] if x[2] else ""),
+                ]
+                for i, x in enumerate(pim_datasets, start=1)
+            ],
+            ["right", "left", "left", "right", "left"],
         )
-        print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
-        for i, row in enumerate(hybris_datasets, start=1):
-            label = str(row[2] if row[2] else "")
-            print(
-                f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-                f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
-                f"{row[1]:>10}\t"  # type: ignore
-                f"{label}"
-            )
+
+        print("\nHybris data")
+        display_in_table(
+            header,
+            [
+                [
+                    i,
+                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[1],
+                    str(x[2] if x[2] else ""),
+                ]
+                for i, x in enumerate(hybris_datasets, start=1)
+            ],
+            ["right", "left", "left", "right", "left"],
+        )
 
 
 def load_pim_data(args) -> None:
@@ -286,10 +328,6 @@ def load_pim_data(args) -> None:
                 label=args.label,
             )
             print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
-            # print(f"============= Rows from {current_file_suffix} =============")
-            # for row in conn.execute(f"SELECT * FROM {current_file_suffix}").fetchall():
-            #     print(row)
-            # print(f"============= End {current_file_suffix} =============\n")
 
 
 if __name__ == "__main__":
