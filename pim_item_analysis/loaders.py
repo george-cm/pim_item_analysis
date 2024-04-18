@@ -67,16 +67,16 @@ def load_file_into_db(
         cursor.executemany(sql, data)
         inserted_row_count = cursor.rowcount
         # add the label
-        # if label:
-        #     sql: str = """
-        #         INSERT INTO labels_pim (export_date, label)
-        #         VALUES (?, ?)
-        #         ON CONFLICT (export_date) DO UPDATE SET label = ?
-        #         """
-        #     cursor.execute(
-        #         sql,
-        #         (export_date, label, label),
-        #     )
+        if label:
+            sql: str = """
+                INSERT INTO labels_pim (export_date, label)
+                VALUES (?, ?)
+                ON CONFLICT (export_date) DO UPDATE SET label = ?
+                """
+            cursor.execute(
+                sql,
+                (export_date, label, label),
+            )
         conn.commit()
         return inserted_row_count
 
