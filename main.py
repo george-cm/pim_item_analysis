@@ -251,7 +251,7 @@ def list_data(args) -> None:
                 [
                     i,
                     x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
-                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[0].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
                     x[1],
                     str(x[2] if x[2] else ""),
                 ]
@@ -267,7 +267,7 @@ def list_data(args) -> None:
                 [
                     i,
                     x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
-                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[0].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
                     x[1],
                     str(x[2] if x[2] else ""),
                 ]
