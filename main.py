@@ -3,25 +3,26 @@
 import argparse
 import datetime
 import sqlite3
+import tomllib
 from pathlib import Path
 from typing import List
+from typing import Literal
 from typing import Optional
+
+from rich.console import Console
 
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_label_tables
 from pim_item_analysis.db import db_get_hybris_datasets
 from pim_item_analysis.db import db_get_pim_datasets
-from pim_item_analysis.db import file_suffix
-
-# from pim_item_analysis.db import register_adapters_and_converters
+from pim_item_analysis.db import file_prefix
+from pim_item_analysis.loaders import load_docfile_into_db
 from pim_item_analysis.loaders import load_excel_to_db
 from pim_item_analysis.loaders import load_file_into_db
 from pim_item_analysis.views import display_in_table
 
-# from pim_item_analysis.views import display_in_table
-
-# register_adapters_and_converters()
+console = Console()
 
 
 def main() -> None:
@@ -39,115 +40,186 @@ def main() -> None:
             required=True,
         )
     )
+    parser_load_pim_data(subparsers)
+    parser_load_hybris_data(subparsers)
+    parser_load_doc_data(subparsers)
+    parser_list(subparsers)
+    parser_add_label(subparsers)
 
-    # create the parser for the "load_data" command
-    parser_load_pim_data: argparse.ArgumentParser = subparsers.add_parser(
+    args: argparse.Namespace = parser.parse_args()
+    args.func(args)
+
+
+def parser_load_pim_data(
+    subparsers,  # pylint: disable=E1136:unsubscriptable-object
+) -> None:
+    """Create the parser for the load_pim_data command"""
+    parser: argparse.ArgumentParser = subparsers.add_parser(
         "load_pim_data",
-        help="Load data from a folder containing CSV files of PIM item data into the database.",
+        help="Load PIM data from CSV files into the database.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_load_pim_data.add_argument(
-        "input_folder", type=str, help="Folder containing CSV files."
+    parser.add_argument(
+        "input_folder",
+        type=str,
+        help="Folder containing CSV files to load.",
     )
-    parser_load_pim_data.add_argument(
+    parser.add_argument(
         "--db_file",
         "-dbf",
         type=str,
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    parser_load_pim_data.add_argument(
+    parser.add_argument(
         "--drop_tables",
         "-dt",
         action="store_true",
         help="Drop tables before loading data.",
         default=False,
     )
-    parser_load_pim_data.add_argument(
+    parser.add_argument(
         "--label",
         "-l",
         type=str,
         help="Add a label to the loaded data.",
         default=None,
     )
-    parser_load_pim_data.set_defaults(func=load_pim_data)
+    parser.set_defaults(func=load_pim_data)
 
-    # create the parser for the load_hybris_data command
-    parser_load_hybris_data: argparse.ArgumentParser = subparsers.add_parser(
+
+def parser_load_hybris_data(
+    subparsers,  # pylint: disable=E1136:unsubscriptable-object
+) -> None:
+    """Create the parser for the load_hybris_data command"""
+    parser: argparse.ArgumentParser = subparsers.add_parser(
         "load_hybris_data",
         help="Load data from a xlsx Excel file containing Hybris data.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_load_hybris_data.add_argument(
+    parser.add_argument(
         "hybris_file",
         type=str,
         help="Path to Hybris file. Should be named something like 'Sku status - dd.mm.xlsx'",
     )
-    parser_load_hybris_data.add_argument(
+    parser.add_argument(
         "--db_file",
         "-dbf",
         type=str,
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    parser_load_hybris_data.add_argument(
+    parser.add_argument(
         "--drop_tables",
         "-dt",
         action="store_true",
         help="Drop tables before loading data.",
         default=False,
     )
-    parser_load_hybris_data.set_defaults(func=load_hybris_data)
+    parser.add_argument(
+        "--label",
+        "-l",
+        type=str,
+        help="Add a label to the loaded data.",
+        default=None,
+    )
+    parser.set_defaults(func=load_hybris_data)
 
-    # create the parser for the "list" command
-    parser_list: argparse.ArgumentParser = subparsers.add_parser(
-        "list",
-        help="List the datasets in the database.",
+
+def parser_load_doc_data(subparsers) -> None:
+    """Create the parser for the load_doc_data command"""
+
+    parser: argparse.ArgumentParser = subparsers.add_parser(
+        "load_doc_data",
+        help="Load data from a folder containing Excel xlsx files with DoC"
+        " data templates from the Quality department.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_list.add_argument(
+    parser.add_argument(
+        "input_folder",
+        type=str,
+        help="Folder containing DoC template Excel xlsx files.",
+    )
+    parser.add_argument(
+        "request_date",
+        type=datetime.date.fromisoformat,
+        help="Date of the request. Format: YYYY-MM-DD",
+    )
+    parser.add_argument(
         "--db_file",
         "-dbf",
         type=str,
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    parser_list.add_argument(
+    parser.add_argument(
+        "--drop_tables",
+        "-dt",
+        action="store_true",
+        help="Drop tables before loading data.",
+        default=False,
+    )
+    parser.add_argument(
+        "--label",
+        "-l",
+        type=str,
+        help="Add a label to the loaded data.",
+        default=None,
+    )
+    parser.set_defaults(func=load_doc_data)
+
+
+def parser_list(subparsers) -> None:
+    """Create the parser for the "list" command"""
+    parser: argparse.ArgumentParser = subparsers.add_parser(
+        "list",
+        help="List the datasets in the database.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    parser.add_argument(
         "--descending",
         "-d",
         action="store_true",
         help="List in descending order.",
         default=False,
     )
-    parser_list.set_defaults(func=list_data)
+    parser.set_defaults(func=list_data)
 
-    # create the parser for adding a label to a dataset
-    parser_add_label: argparse.ArgumentParser = subparsers.add_parser(
+
+def parser_add_label(subparsers) -> None:
+    """Create the parser for the "add_label" command"""
+    parser: argparse.ArgumentParser = subparsers.add_parser(
         "add_label",
         help="Add a label to a dataset.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_add_label.add_argument(
-        "dataset_type", choices=["pim", "hybris"], help="Dataset type, pim or hybris."
+    parser.add_argument(
+        "dataset_type",
+        choices=["pim", "hybris", "doc"],
+        help="Dataset type, pim or hybris.",
     )
-    parser_add_label.add_argument(
+    parser.add_argument(
         "dataset_number",
         type=int,
         help="Number of the dataset to add a label to, from the list command."
         " Overwrites any existing label.",
     )
-    parser_add_label.add_argument("dataset_label", type=str, help="Label to add.")
-    parser_add_label.add_argument(
+    parser.add_argument("dataset_label", type=str, help="Label to add.")
+    parser.add_argument(
         "--db_file",
         "-dbf",
         type=str,
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    parser_add_label.set_defaults(func=add_label)
-
-    args: argparse.Namespace = parser.parse_args()
-    args.func(args)
+    parser.set_defaults(func=add_label)
 
 
 def add_label(args) -> None:
@@ -155,7 +227,7 @@ def add_label(args) -> None:
     db_file: str = args.db_file
     dataset_number: int = args.dataset_number
     label: str = args.dataset_label
-    dataset_type: str = args.dataset_type
+    dataset_type: Literal["pim", "hybris"] = args.dataset_type
     selected_date: datetime.datetime
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
@@ -182,6 +254,7 @@ def load_hybris_data(args) -> None:
             hybris_file,
             drop_table_first=args.drop_tables,
             unique_index_columns=index_columns,
+            label=args.label,
         )
         print(f"Inserted {inserted_rows_count} rows from {hybris_file}\n")
 
@@ -199,44 +272,7 @@ def list_data(args) -> None:
             db_get_hybris_datasets(conn)
         )
 
-        # print("\nPIM data")
-        # print("=" * len("PIM data"))
-        # print(
-        #     "\nDataset\nNumber\t"
-        #     "Export date string\t"
-        #     f"Export date{' ' * (19 - len('Export date'))}\t"
-        #     "Item count\t"
-        #     "Label"
-        # )
-        # print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
-        # for i, row in enumerate(pim_datasets, start=1):
-        #     label: str = str(row[2] if row[2] else "")
-        #     print(
-        #         f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-        #         f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
-        #         f"{row[1]:>10}\t"  # type: ignore
-        #         f"{label}"
-        #     )
-        # print("\nHybris data")
-        # print("=" * len("Hybris data"))
-        # print(
-        #     "\nDataset\nNumber\t"
-        #     "Export date string\t"
-        #     f"Export date{' ' * (19 - len('Export date'))}\t"
-        #     "Item count\t"
-        #     "Label"
-        # )
-        # print(f"{'':->7}\t{'':->19}\t{'':->19}\t{'':->10}\t{'':->32}")
-        # for i, row in enumerate(hybris_datasets, start=1):
-        #     label = str(row[2] if row[2] else "")
-        #     print(
-        #         f"{i: >7}\t{row[0].strftime("%Y-%m-%dT%H:%M:%S")}\t"  # type: ignore
-        #         f"{row[0].strftime("%Y/%m/%d %H:%M:%S")}\t"  # type: ignore
-        #         f"{row[1]:>10}\t"  # type: ignore
-        #         f"{label}"
-        #     )
-
-        header = [
+        header: List[str] = [
             "Dataset\nNumber",
             "Export date string",
             "Export date",
@@ -281,7 +317,6 @@ def load_pim_data(args) -> None:
     """Load data into the database"""
     current_dir = Path(__file__).parent
     print(f"Current directory: {current_dir}")
-    # db_file: str = "pim_item_analysis.db"
     db_file: str = args.db_file
 
     input_folder = Path(args.input_folder)
@@ -291,7 +326,7 @@ def load_pim_data(args) -> None:
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         for file_path in input_folder.glob("*.csv"):
-            current_file_suffix: str = file_suffix(file_path)
+            current_file_suffix: str = file_prefix(file_path)
 
             if current_file_suffix == "item_availability":
                 index_columns = ["export_date", "Item no."]
@@ -328,6 +363,81 @@ def load_pim_data(args) -> None:
                 label=args.label,
             )
             print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
+
+
+def load_doc_data(args) -> None:
+    """Load data into the database"""
+    current_dir = Path(__file__).parent
+    config_file = current_dir / "config.toml"
+    with config_file.open("rb") as f:
+        config = tomllib.load(f)
+    print(f"Current directory: {current_dir}")
+    # print(f"{config=}")
+    console.print(config)
+
+    db_file: str = args.db_file
+
+    input_folder = Path(args.input_folder)
+
+    index_columns: Optional[List[str]] = None
+
+    with db_create_connection(db_file) as conn:
+        for file_path in input_folder.glob("*.xlsx"):
+            # find out if the file is part of the DoC templates
+            for prefix in config["doc"]["file_prefixes"]:
+                if file_path.name.lower().startswith(prefix):
+                    current_file_prefix = prefix
+                    break
+            console.print(f"{current_file_prefix=} - {file_path.name=}")
+
+            inserted_rows_count: int = load_docfile_into_db(
+                conn,
+                file_path,
+                prefix=current_file_prefix,
+                request_date=args.request_date,
+                config=config,
+                drop_table_first=args.drop_tables,
+                unique_index_columns=index_columns,
+                label=args.label,
+            )
+
+            print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
+
+            # if current_file_suffix == "item_availability":
+            #     index_columns = ["export_date", "Item no."]
+            # elif current_file_suffix == "item_classification":
+            #     index_columns = [
+            #         "export_date",
+            #         "Item no.",
+            #         "Structure.Identifier",
+            #         "Structure group.Structure group identifier",
+            #     ]
+            # elif current_file_suffix == "item_pricing":
+            #     index_columns = [
+            #         "export_date",
+            #         "Item no.",
+            #         "Condition record no.",
+            #     ]
+            # elif current_file_suffix == "product_availability":
+            #     index_columns = ["export_date", "Product no."]
+            # elif current_file_suffix == "product_classification":
+            #     index_columns = [
+            #         "export_date",
+            #         "Product no.",
+            #         "Structure.Identifier",
+            #         "Structure group.Structure group identifier",
+            #     ]
+            # else:
+            #     index_columns = None
+
+            # inserted_rows_count: int = load_file_into_db(
+            #     conn,
+            #     file_path,
+            #     drop_table_first=args.drop_tables,
+            #     unique_index_columns=index_columns,
+            #     label=args.label,
+            # )
+            # print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
 
 
 if __name__ == "__main__":

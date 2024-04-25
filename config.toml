@@ -1,0 +1,79 @@
+[doc]
+
+file_prefixes = [
+    "doc data collection template",
+    "doc description template",
+    "pim sku load template",
+]
+
+[doc.file_sheets]
+
+"doc data collection template" = [
+    "doc cert data template",
+    "doc sku data template",
+]
+
+"doc description template" = ["sku list complete_translation"]
+
+"pim sku load template" = ["pim sku load"]
+
+
+[doc.sheet_headers."doc cert data template"]
+
+'certification_number' = 'required'
+'module number' = 'required'
+'legislation_type' = 'required'
+'legislation_id' = 'required'
+'cert_issue_date' = 'required'
+'cert_exp_date' = 'required'
+'cert_standard_list' = 'required'
+'nb_number' = 'required'
+'mnfr_code_name' = 'required'
+'product_name_cert' = 'do not use'
+
+
+[doc.sheet_headers."doc sku data template"]
+
+'item_code' = 'required'
+'certification_number' = 'required'
+'cert_region' = 'required'
+'ppe_category' = 'required'
+'prod_manager eid' = 'required'
+'prod_manager_owner' = 'required'
+
+[doc.sheet_headers."sku list complete_translation"]
+
+'item no.' = 'required'
+'item short description' = 'required'
+'item long description' = 'do not use'
+'language' = 'required'
+'pim item status' = 'do not use'
+'sku' = 'do not use'
+'master/legal brand' = 'do not use'
+'ppe_category' = 'do not use'
+'product manager owner' = 'do not use'
+'business unit' = 'do not use'
+'pim traceability classification' = 'required'
+
+[doc.sheet_headers."pim sku load"]
+
+'item no.' = 'required'
+'source system' = 'optional'
+'sales area' = 'optional'
+'brand' = 'optional'
+'product lob' = 'optional'
+'product family' = 'optional'
+'product line' = 'optional'
+'product line subgroup' = 'optional'
+'product (model)' = 'optional'
+'erp short description' = 'required'
+
+[doc.start_rows]
+
+"doc cert data template" = { "header" = 3, "data" = 6 }
+
+"doc sku data template" = { "header" = 3, "data" = 6 }
+
+"sku list complete_translation" = { "header" = 6, "data" = 7 }
+
+"pim sku load" = { "header" = 2, "data" = 3 }

@@ -285,7 +285,7 @@ def get_export_date_from_file(filepath: Path) -> datetime.datetime:
 def db_add_label(
     conn: sqlite3.Connection,
     db_file: Path | str,
-    dataset_type: Literal["pim", "hybris"],
+    dataset_type: Literal["pim", "hybris", "doc"],
     dataset_datetime: datetime.datetime,
     label: str,
 ) -> None:
@@ -308,7 +308,7 @@ def db_add_label(
         # print(list(result))
 
 
-def file_suffix(file_path: Union[Path, str]) -> str:  # type: ignore
+def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
     """Get the file suffix."""
     if isinstance(file_path, str):
         file_path = Path(file_path)

@@ -20,8 +20,8 @@ pytest = "^8.1.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 force-single-line = true
 
 [tool.isort]
-force-single-line = true
+force_single_line = true

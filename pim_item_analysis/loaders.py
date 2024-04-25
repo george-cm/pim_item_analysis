@@ -11,7 +11,9 @@ import sqlite3
 from datetime import datetime
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
+from typing import Dict
+from typing import Iterator
 from typing import List
 from typing import Optional
 
@@ -19,7 +21,7 @@ import openpyxl
 
 from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_drop_tables
-from pim_item_analysis.db import file_suffix
+from pim_item_analysis.db import file_prefix
 from pim_item_analysis.db import get_export_date_from_file
 
 
@@ -34,10 +36,10 @@ def load_file_into_db(
     file_path: Path,
     drop_table_first: bool = False,
     unique_index_columns: Optional[List[str]] = None,
-    label: str = "",
+    label: str | None = None,
 ) -> int:
     """Load file into the database"""
-    current_file_suffix: str = file_suffix(file_path)
+    current_file_suffix: str = file_prefix(file_path)
     export_date: datetime = get_export_date_from_file(file_path)
     print(current_file_suffix)
     print(export_date)
@@ -86,9 +88,10 @@ def load_excel_to_db(
     file_path: Path,
     drop_table_first: bool = False,
     unique_index_columns: Optional[List[str]] = None,
+    label: str | None = None,
 ) -> int:
     """Load Excel file to database."""
-    current_file_suffix: str = file_suffix(file_path)
+    current_file_suffix: str = file_prefix(file_path)
     export_date: datetime = round_seconds(
         datetime.fromtimestamp(file_path.stat().st_ctime)
     )
@@ -134,8 +137,64 @@ def load_excel_to_db(
     cursor.executemany(sql, data)
     inserted_row_count: int = cursor.rowcount
 
+    # add the label
+    if label:
+        sql: str = """
+            INSERT INTO labels_hybris (export_date, label)
+            VALUES (?, ?)
+            ON CONFLICT (export_date) DO UPDATE SET label = ?
+            """
+        cursor.execute(
+            sql,
+            (export_date, label, label),
+        )
     conn.commit()
     return inserted_row_count
+
+
+def load_docfile_into_db(
+    conn: sqlite3.Connection,
+    file_path: Path,
+    prefix: str,
+    request_date: datetime,
+    config: Dict[str, Any],
+    drop_table_first: bool = False,
+    unique_index_columns: Optional[List[str]] = None,
+    label: str | None = None,
+) -> int:
+    """Load doc Excel xlsx file into the database"""
+    with file_path.open("rb") as f:
+        in_memory_file = io.BytesIO(f.read())
+
+    sheets: List[str] = config["doc"]["file_sheets"][prefix]
+    workbook: openpyxl.Workbook = openpyxl.load_workbook(in_memory_file, read_only=True)
+    for sh in workbook.worksheets:
+        if sh.title.lower() not in sheets:
+            continue
+        print(f"sheet name: {sh.title}")
+        config_header = list(config["doc"]["sheet_headers"][sh.title.lower()].keys())
+        config_header_requirements = list(
+            config["doc"]["sheet_headers"][sh.title.lower()].values()
+        )
+        print(f"{config_header=}")
+        print(f"{config_header_requirements=}")
+        start_row_header = config["doc"]["start_rows"][sh.title.lower()]["header"]
+        start_row_data = config["doc"]["start_rows"][sh.title.lower()]["data"]
+
+        empty_rows: int = 0
+        for i, row in enumerate(sh.iter_rows(values_only=True), start=1):
+            if i == start_row_header:
+                print(f"{i}:header: {row}")
+            if i >= start_row_data:
+                print(f"{i}:data: {row}")
+                data = [x.strip() if isinstance(x, str) else x for x in row]
+                print(f"{data=}")
+                if not any(data):
+                    empty_rows += 1
+            if empty_rows >= 3:
+                break
+        print()
+    return 1
 
 
 def main():

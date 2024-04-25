@@ -12,7 +12,7 @@ from pim_item_analysis.db import (
     db_add_column,
     db_create_table,
     normalize_name,
-    file_suffix,
+    file_prefix,
 )
 
 
@@ -130,5 +130,5 @@ def test_normalize_name(name, expected) -> None:
         ("Skus status - 11.04.xlsx", "skus_status"),
     ),
 )
-def test_file_suffix(name, expected) -> None:
-    assert file_suffix(name) == expected
+def test_file_prefix(name, expected) -> None:
+    assert file_prefix(name) == expected
