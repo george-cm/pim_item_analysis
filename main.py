@@ -14,6 +14,7 @@ from rich.console import Console
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_label_tables
+from pim_item_analysis.db import db_get_doc_datasets
 from pim_item_analysis.db import db_get_hybris_datasets
 from pim_item_analysis.db import db_get_pim_datasets
 from pim_item_analysis.db import file_prefix
@@ -45,6 +46,7 @@ def main() -> None:
     parser_load_doc_data(subparsers)
     parser_list(subparsers)
     parser_add_label(subparsers)
+    parser_doc(subparsers)
 
     args: argparse.Namespace = parser.parse_args()
     args.func(args)
@@ -193,6 +195,30 @@ def parser_list(subparsers) -> None:
     parser.set_defaults(func=list_data)
 
 
+def parser_doc(subparsers) -> None:
+    """Create the parser for the "list" command"""
+    parser: argparse.ArgumentParser = subparsers.add_parser(
+        "doc",
+        help="DoC related commands.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    # parser.add_argument(
+    #     "--descending",
+    #     "-d",
+    #     action="store_true",
+    #     help="List in descending order.",
+    #     default=False,
+    # )
+    parser.set_defaults(func=doc_analysis)
+
+
 def parser_add_label(subparsers) -> None:
     """Create the parser for the "add_label" command"""
     parser: argparse.ArgumentParser = subparsers.add_parser(
@@ -222,6 +248,35 @@ def parser_add_label(subparsers) -> None:
     parser.set_defaults(func=add_label)
 
 
+def doc_analysis(args) -> None:
+    """DoC related commands"""
+    db_file: str = args.db_file
+    with db_create_connection(db_file) as conn:
+        sql: str = """
+            SELECT
+                CERTIFICATION_NUMBER,
+                "MODULE NUMBER",
+                LEGISLATION_TYPE,
+                LEGISLATION_ID,
+                -- replace(CERT_ISSUE_DATE,"T", " ") as CERT_ISSUE_DATE,
+                -- replace(CERT_EXP_DATE, "T", " ") as CERT_EXP_DATE,
+                CERT_ISSUE_DATE,
+                CERT_EXP_DATE,
+                CERT_STANDARD_LIST,
+                NB_NUMBER,
+                MNFR_CODE_NAME,
+                PRODUCT_NAME_CERT,
+                file_name
+            FROM
+                doc_cert_data_template
+        """
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        for result in results:
+            print(result)
+
+
 def add_label(args) -> None:
     """Add a label to a dataset"""
     db_file: str = args.db_file
@@ -237,7 +292,7 @@ def add_label(args) -> None:
             selected_date = db_get_hybris_datasets(conn)[dataset_number - 1][0]  # type: ignore
         else:
             raise ValueError(f"Unknown dataset type {dataset_type}")
-        db_add_label(conn, db_file, dataset_type, selected_date, label)
+        db_add_label(conn, dataset_type, selected_date, label)
 
 
 def load_hybris_data(args) -> None:
@@ -271,7 +326,9 @@ def list_data(args) -> None:
         hybris_datasets: List[List[str | datetime.datetime | int]] = (
             db_get_hybris_datasets(conn)
         )
-
+        doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(
+            conn
+        )
         header: List[str] = [
             "Dataset\nNumber",
             "Export date string",
@@ -308,6 +365,32 @@ def list_data(args) -> None:
                     str(x[2] if x[2] else ""),
                 ]
                 for i, x in enumerate(hybris_datasets, start=1)
+            ],
+            ["right", "left", "left", "right", "left"],
+        )
+        header_doc: List[str] = [
+            "Dataset\nNumber",
+            "Request date string",
+            "Request date",
+            "Record count",
+            "Sheet Name",
+            "File Name",
+            "Label",
+        ]
+        print("\nDoC data")
+        display_in_table(
+            header_doc,
+            [
+                [
+                    i,
+                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[0].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
+                    x[1],
+                    x[2],
+                    x[3],
+                    str(x[4] if x[4] else ""),
+                ]
+                for i, x in enumerate(doc_datasets, start=1)
             ],
             ["right", "left", "left", "right", "left"],
         )
@@ -373,11 +456,12 @@ def load_doc_data(args) -> None:
         config = tomllib.load(f)
     print(f"Current directory: {current_dir}")
     # print(f"{config=}")
-    console.print(config)
+    # console.print(config)
 
     db_file: str = args.db_file
 
     input_folder = Path(args.input_folder)
+    print(f"{input_folder=}")
 
     index_columns: Optional[List[str]] = None
 
@@ -390,7 +474,7 @@ def load_doc_data(args) -> None:
                     break
             console.print(f"{current_file_prefix=} - {file_path.name=}")
 
-            inserted_rows_count: int = load_docfile_into_db(
+            total_inserted_rows_count: int = load_docfile_into_db(
                 conn,
                 file_path,
                 prefix=current_file_prefix,
@@ -401,7 +485,7 @@ def load_doc_data(args) -> None:
                 label=args.label,
             )
 
-            print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
+            print(f"Total inserted {total_inserted_rows_count} rows from {file_path}\n")
 
             # if current_file_suffix == "item_availability":
             #     index_columns = ["export_date", "Item no."]

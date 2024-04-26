@@ -188,6 +188,17 @@ files = [
 ]
 
 [[package]]
+name = "types-openpyxl"
+version = "3.1.0.20240425"
+description = "Typing stubs for openpyxl"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "types-openpyxl-3.1.0.20240425.tar.gz", hash = "sha256:774176d8d8d709b62915fc01a182aa4a5400fa4f6acce54927d3a782a8135c19"},
+    {file = "types_openpyxl-3.1.0.20240425-py3-none-any.whl", hash = "sha256:3f37e8400ffb12e10f768c222acb3d718eb401ff72147491f1c679dd97d9fb52"},
+]
+
+[[package]]
 name = "xlsxwriter"
 version = "3.2.0"
 description = "A Python module for creating Excel XLSX files."
@@ -201,4 +212,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "7f6668b4fdf8388ac0820cc26aa47a20412c95a31dd103b822d5982209958fbe"
+content-hash = "8b160b04b763a7ff0bf25b38d9205e357ef04d9c4b342e1f40c73c5cf976d931"

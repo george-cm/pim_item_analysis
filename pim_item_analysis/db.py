@@ -9,41 +9,43 @@ import re
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
+from string import Template
 from typing import Dict
 from typing import List
 from typing import Literal
+from typing import LiteralString
 from typing import Optional
 from typing import Union
 
 
-def adapt_date_iso(val):
+def adapt_date_iso(val: datetime.date) -> str:
     """Adapt datetime.date to ISO 8601 date."""
     return val.isoformat()
 
 
-def adapt_datetime_iso(val):
+def adapt_datetime_iso(val: datetime.datetime) -> str:
     """Adapt datetime.datetime to timezone-naive ISO 8601 date."""
     return val.isoformat()
 
 
-def adapt_datetime_epoch(val):
+def adapt_datetime_epoch(val: datetime.datetime) -> int:
     """Adapt datetime.datetime to Unix timestamp."""
     return int(val.timestamp())
 
 
-def convert_date(val):
+def convert_date(val: bytes) -> datetime.date:
     """Convert ISO 8601 date to datetime.date object."""
     return datetime.date.fromisoformat(val.decode("utf-8"))
 
 
-def convert_datetime(val):
+def convert_datetime(val: bytes) -> datetime.datetime:
     """Convert ISO 8601 datetime to datetime.datetime object."""
     return datetime.datetime.fromisoformat(val.decode("utf-8"))
 
 
-def convert_timestamp(val):
+def convert_timestamp(val: bytes) -> datetime.datetime:
     """Convert Unix epoch timestamp to datetime.datetime object."""
-    return datetime.datetime.fromtimestamp(val.decode("utf-8"))
+    return datetime.datetime.fromtimestamp(float(val.decode("utf-8")))
 
 
 def register_adapters_and_converters() -> None:
@@ -184,6 +186,13 @@ def db_create_label_tables(conn: sqlite3.Connection) -> None:
                 label       TEXT
             )
             """)
+    conn.execute("""
+            CREATE TABLE IF NOT EXISTS labels_doc (
+                id              INTEGER  PRIMARY KEY AUTOINCREMENT,
+                request_date  DATETIME NOT NULL UNIQUE,
+                label           TEXT
+            )
+            """)
 
 
 def db_get_pim_datasets(
@@ -238,6 +247,51 @@ def db_get_hybris_datasets(
     return list(datasets)
 
 
+def db_get_doc_datasets(
+    conn: sqlite3.Connection, descending: bool = False
+) -> List[List[str | datetime.datetime | int]]:
+    """Get list of DoC datasets."""
+    cursor: sqlite3.Cursor = conn.cursor()
+    sql: Template = Template("""
+        SELECT "left"."request_date",
+            "left"."$counts_column",
+            "left"."Sheet Name",
+            "left"."File Name",
+            "right"."label"
+        FROM
+            (
+                SELECT DISTINCT
+                    request_date,
+                    count("$counts_column") AS "$counts_column",
+                    "$table_name" as "Sheet Name",
+                    "file_name" as "File Name"
+                FROM $table_name
+                GROUP BY request_date
+                ORDER BY request_date $order
+            )
+            AS "left"
+        LEFT JOIN labels_doc AS "right"
+            ON "left"."request_date" = "right"."request_date"
+    """)
+    all_data: List[List[str | datetime.datetime | int]] = []
+    tables: Dict[str, str] = {
+        "doc_cert_data_template": "CERTIFICATION_NUMBER",
+        "doc_sku_data_template": "ITEM_CODE",
+        "sku_list_complete_translation": "Item No.",
+        "pim_sku_load": "Item No.",
+    }
+    for table_name, counts_column in tables.items():
+        order: str = "DESC" if descending else "ASC"
+        if db_table_exists(conn, table_name):
+            datasets: sqlite3.Cursor = cursor.execute(
+                sql.substitute(
+                    table_name=table_name, counts_column=counts_column, order=order
+                )
+            )
+            all_data.extend(list(datasets))
+    return all_data
+
+
 def db_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     """Check if table exists in the database."""
     cur: sqlite3.Cursor = conn.cursor()
@@ -284,28 +338,23 @@ def get_export_date_from_file(filepath: Path) -> datetime.datetime:
 
 def db_add_label(
     conn: sqlite3.Connection,
-    db_file: Path | str,
     dataset_type: Literal["pim", "hybris", "doc"],
     dataset_datetime: datetime.datetime,
     label: str,
 ) -> None:
     """Add label to the lables table."""
-    with db_create_connection(db_file) as conn:
-        db_create_label_tables(conn)
-        conn.execute(
-            f"""
-            INSERT INTO labels_{dataset_type} (export_date, label)
-            VALUES (?, ?)
-            ON CONFLICT (export_date) DO UPDATE SET label = ?
-            """,
-            (dataset_datetime, label, label),
-        )
-        # result = conn.execute(
-        #     f"""
-        #     SELECT * FROM labels_{dataset_type}
-        #     """
-        # )
-        # print(list(result))
+    date_column: str = "request_date" if dataset_type == "doc" else "export_date"
+    db_create_label_tables(conn)
+    sql: LiteralString = f"""
+        INSERT INTO labels_{dataset_type} ({date_column}, label)
+        VALUES (?, ?)
+        ON CONFLICT ({date_column}) DO UPDATE SET label = ?
+        """
+    conn.execute(
+        sql,
+        (dataset_datetime, label, label),
+    )
+    conn.commit()
 
 
 def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
@@ -322,6 +371,14 @@ def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
         return file_name_parts[0]
     else:
         return "_".join(file_name_parts[:2])
+
+
+def round_seconds(precise_datetime: datetime.datetime) -> datetime.datetime:
+    """Round to nearest second."""
+    adjusted_datetime: datetime.datetime = precise_datetime + datetime.timedelta(
+        seconds=0.5
+    )
+    return adjusted_datetime.replace(microsecond=0)
 
 
 def main():

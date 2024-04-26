@@ -9,26 +9,23 @@ import csv
 import io
 import sqlite3
 from datetime import datetime
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from typing import Dict
 from typing import Iterator
 from typing import List
 from typing import Optional
+from typing import Tuple
 
 import openpyxl
 
+from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_drop_tables
 from pim_item_analysis.db import file_prefix
 from pim_item_analysis.db import get_export_date_from_file
-
-
-def round_seconds(precise_datetime: datetime) -> datetime:
-    """Round to nearest second."""
-    adjusted_datetime: datetime = precise_datetime + timedelta(seconds=0.5)
-    return adjusted_datetime.replace(microsecond=0)
+from pim_item_analysis.db import normalize_name
+from pim_item_analysis.db import round_seconds
 
 
 def load_file_into_db(
@@ -68,18 +65,13 @@ def load_file_into_db(
         cursor = conn.cursor()
         cursor.executemany(sql, data)
         inserted_row_count = cursor.rowcount
-        # add the label
-        if label:
-            sql: str = """
-                INSERT INTO labels_pim (export_date, label)
-                VALUES (?, ?)
-                ON CONFLICT (export_date) DO UPDATE SET label = ?
-                """
-            cursor.execute(
-                sql,
-                (export_date, label, label),
-            )
         conn.commit()
+
+        # add the label
+        if label and inserted_row_count > 0:
+            db_add_label(
+                conn, dataset_type="pim", dataset_datetime=export_date, label=label
+            )
         return inserted_row_count
 
 
@@ -111,19 +103,14 @@ def load_excel_to_db(
         "export_date": "DATETIME NOT NULL",
     }
     fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[1:]}}
-    # print(f"{header=}")
-    # print(f"{columns=}")
-    # print(f"{columns_str=}")
-    # print(f"{fields=}")
 
     if drop_table_first:
         db_drop_tables(conn, [current_file_suffix])
+
     db_create_table(
         conn, current_file_suffix, fields, unique_index_columns=unique_index_columns
     )
-    # data: Tuple[Any]
-    # for i, row in enumerate(sheet.iter_rows(values_only=True)):
-    #     data.append(row)
+
     data: List[List[Any]] = [
         [export_date, f"{row[1]}~{row[0]}", *row] for row in row_iter
     ]
@@ -136,19 +123,13 @@ def load_excel_to_db(
     cursor: sqlite3.Cursor = conn.cursor()
     cursor.executemany(sql, data)
     inserted_row_count: int = cursor.rowcount
+    conn.commit()
 
     # add the label
     if label:
-        sql: str = """
-            INSERT INTO labels_hybris (export_date, label)
-            VALUES (?, ?)
-            ON CONFLICT (export_date) DO UPDATE SET label = ?
-            """
-        cursor.execute(
-            sql,
-            (export_date, label, label),
+        db_add_label(
+            conn, dataset_type="hybris", dataset_datetime=export_date, label=label
         )
-    conn.commit()
     return inserted_row_count
 
 
@@ -163,6 +144,8 @@ def load_docfile_into_db(
     label: str | None = None,
 ) -> int:
     """Load doc Excel xlsx file into the database"""
+    total_inserted_rows_count: int = 0
+    cursor: sqlite3.Cursor = conn.cursor()
     with file_path.open("rb") as f:
         in_memory_file = io.BytesIO(f.read())
 
@@ -171,30 +154,80 @@ def load_docfile_into_db(
     for sh in workbook.worksheets:
         if sh.title.lower() not in sheets:
             continue
-        print(f"sheet name: {sh.title}")
+        # print(f"sheet name: {sh.title}")
+        table_name: str = normalize_name(sh.title)
         config_header = list(config["doc"]["sheet_headers"][sh.title.lower()].keys())
-        config_header_requirements = list(
-            config["doc"]["sheet_headers"][sh.title.lower()].values()
-        )
-        print(f"{config_header=}")
-        print(f"{config_header_requirements=}")
+        # config_header_requirements = list(
+        #     config["doc"]["sheet_headers"][sh.title.lower()].values()
+        # )
+        # print(f"{config_header=}")
+        # print(f"{config_header_requirements=}")
         start_row_header = config["doc"]["start_rows"][sh.title.lower()]["header"]
         start_row_data = config["doc"]["start_rows"][sh.title.lower()]["data"]
-
+        data: List[Any] = []
         empty_rows: int = 0
-        for i, row in enumerate(sh.iter_rows(values_only=True), start=1):
+        for i, row in enumerate(sh.iter_rows(values_only=True), start=1):  # type: ignore
+            # getting rid of extra columns from the end which are not
+            # parte of the inital template that the user might have added
+            trimmed_row: Tuple[str | float | datetime | None, ...] = row[
+                : len(config_header)
+            ]
             if i == start_row_header:
-                print(f"{i}:header: {row}")
+                columns: List[str] = list(("request_date", *trimmed_row, "file_name"))  # type: ignore
+                columns_str: str = ", ".join([f"[{x}]" for x in columns])
+                extra_fields: dict[str, str] = {
+                    "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+                    "request_date": "DATETIME NOT NULL",
+                }
+                fields: dict[str, str] = {
+                    **extra_fields,
+                    **{
+                        k: "DATE" if "date" in k.lower() else "TEXT"
+                        for k in columns[1:]
+                    },
+                }
+                if drop_table_first:
+                    db_drop_tables(conn, [table_name])
+                db_create_table(
+                    conn,
+                    table_name,
+                    fields,
+                    unique_index_columns=unique_index_columns,
+                )
+                sql: str = f"""
+                    INSERT OR IGNORE INTO {table_name} ({columns_str})
+                    VALUES ({','.join(['?' for _ in columns])})
+                """
+                # print(f"{i}:header: {row}")
             if i >= start_row_data:
-                print(f"{i}:data: {row}")
-                data = [x.strip() if isinstance(x, str) else x for x in row]
-                print(f"{data=}")
-                if not any(data):
+                # print(f"{i}:data: {row}")
+                data_row: List[Any] = [
+                    x.strip()
+                    if isinstance(x, str)
+                    else (x.date() if isinstance(x, datetime) else x)
+                    for x in trimmed_row
+                ]
+                # print(f"{data_row=}")
+                if any(data_row):
+                    data.append([request_date] + data_row + [file_path.name])
+                else:
                     empty_rows += 1
             if empty_rows >= 3:
                 break
-        print()
-    return 1
+        cursor.executemany(sql, data)
+        inserted_rows_count: int = cursor.rowcount
+        total_inserted_rows_count += inserted_rows_count
+        conn.commit()
+
+        # add the label
+        if label:
+            db_add_label(
+                conn, dataset_type="doc", dataset_datetime=request_date, label=label
+            )
+        print(
+            f"Inserted {inserted_rows_count} rows from sheet {sh.title} from file {file_path}\n"
+        )
+    return total_inserted_rows_count
 
 
 def main():
