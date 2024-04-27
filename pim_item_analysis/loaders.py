@@ -6,9 +6,9 @@ Each inner list represents a row, with the cell values as elements.
 """
 
 import csv
+import datetime
 import io
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from typing import Dict
@@ -37,7 +37,7 @@ def load_file_into_db(
 ) -> int:
     """Load file into the database"""
     current_file_suffix: str = file_prefix(file_path)
-    export_date: datetime = get_export_date_from_file(file_path)
+    export_date: datetime.datetime = get_export_date_from_file(file_path)
     print(current_file_suffix)
     print(export_date)
     with file_path.open(encoding="utf-8") as f:
@@ -60,7 +60,9 @@ def load_file_into_db(
             INSERT OR IGNORE INTO {current_file_suffix} ({columns_str})
             VALUES ({','.join(['?' for _ in columns])})
         """
-        data: List[List[str | datetime]] = [[export_date] + row for row in csv_reader]
+        data: List[List[str | datetime.datetime]] = [
+            [export_date] + row for row in csv_reader
+        ]
 
         cursor = conn.cursor()
         cursor.executemany(sql, data)
@@ -72,7 +74,7 @@ def load_file_into_db(
             db_add_label(
                 conn, dataset_type="pim", dataset_datetime=export_date, label=label
             )
-        return inserted_row_count
+    return inserted_row_count
 
 
 def load_excel_to_db(
@@ -84,8 +86,8 @@ def load_excel_to_db(
 ) -> int:
     """Load Excel file to database."""
     current_file_suffix: str = file_prefix(file_path)
-    export_date: datetime = round_seconds(
-        datetime.fromtimestamp(file_path.stat().st_ctime)
+    export_date: datetime.datetime = round_seconds(
+        datetime.datetime.fromtimestamp(file_path.stat().st_ctime)
     )
     # print(export_date)
     with file_path.open("rb") as f:
@@ -126,7 +128,7 @@ def load_excel_to_db(
     conn.commit()
 
     # add the label
-    if label:
+    if label and inserted_row_count > 0:
         db_add_label(
             conn, dataset_type="hybris", dataset_datetime=export_date, label=label
         )
@@ -137,14 +139,14 @@ def load_docfile_into_db(
     conn: sqlite3.Connection,
     file_path: Path,
     prefix: str,
-    request_date: datetime,
+    request_date: datetime.datetime,
     config: Dict[str, Any],
     drop_table_first: bool = False,
     unique_index_columns: Optional[List[str]] = None,
     label: str | None = None,
 ) -> int:
     """Load doc Excel xlsx file into the database"""
-    total_inserted_rows_count: int = 0
+    total_inserted_row_count: int = 0
     cursor: sqlite3.Cursor = conn.cursor()
     with file_path.open("rb") as f:
         in_memory_file = io.BytesIO(f.read())
@@ -169,7 +171,7 @@ def load_docfile_into_db(
         for i, row in enumerate(sh.iter_rows(values_only=True), start=1):  # type: ignore
             # getting rid of extra columns from the end which are not
             # parte of the inital template that the user might have added
-            trimmed_row: Tuple[str | float | datetime | None, ...] = row[
+            trimmed_row: Tuple[str | float | datetime.datetime | None, ...] = row[
                 : len(config_header)
             ]
             if i == start_row_header:
@@ -204,7 +206,7 @@ def load_docfile_into_db(
                 data_row: List[Any] = [
                     x.strip()
                     if isinstance(x, str)
-                    else (x.date() if isinstance(x, datetime) else x)
+                    else (x.date() if isinstance(x, datetime.datetime) else x)
                     for x in trimmed_row
                 ]
                 # print(f"{data_row=}")
@@ -215,19 +217,19 @@ def load_docfile_into_db(
             if empty_rows >= 3:
                 break
         cursor.executemany(sql, data)
-        inserted_rows_count: int = cursor.rowcount
-        total_inserted_rows_count += inserted_rows_count
+        inserted_row_count: int = cursor.rowcount
+        total_inserted_row_count += inserted_row_count
         conn.commit()
 
-        # add the label
-        if label:
-            db_add_label(
-                conn, dataset_type="doc", dataset_datetime=request_date, label=label
-            )
         print(
-            f"Inserted {inserted_rows_count} rows from sheet {sh.title} from file {file_path}\n"
+            f"Inserted {inserted_row_count} rows from sheet {sh.title} from file {file_path}\n"
         )
-    return total_inserted_rows_count
+    # add the label
+    if label and inserted_row_count > 0:
+        db_add_label(
+            conn, dataset_type="doc", dataset_datetime=request_date, label=label
+        )
+    return total_inserted_row_count
 
 
 def main():

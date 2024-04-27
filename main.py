@@ -5,6 +5,7 @@ import datetime
 import sqlite3
 import tomllib
 from pathlib import Path
+from typing import Any
 from typing import List
 from typing import Literal
 from typing import Optional
@@ -16,8 +17,11 @@ from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_label_tables
 from pim_item_analysis.db import db_get_doc_datasets
 from pim_item_analysis.db import db_get_hybris_datasets
+from pim_item_analysis.db import db_get_label_for_date
 from pim_item_analysis.db import db_get_pim_datasets
 from pim_item_analysis.db import file_prefix
+from pim_item_analysis.db import get_export_date_from_file
+from pim_item_analysis.db import round_seconds
 from pim_item_analysis.loaders import load_docfile_into_db
 from pim_item_analysis.loaders import load_excel_to_db
 from pim_item_analysis.loaders import load_file_into_db
@@ -302,14 +306,21 @@ def load_hybris_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     index_columns: List[str] = ["export_date", "Item no."]
     # print(f"{args.drop_tables=}")
+    export_date: datetime.datetime = round_seconds(
+        datetime.datetime.fromtimestamp(hybris_file.stat().st_ctime)
+    )
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
+        label: Optional[str] = args.label
+        existing_label: Optional[str] = db_get_label_for_date(
+            conn, "hybris", export_date
+        )
         inserted_rows_count = load_excel_to_db(
             conn,
             hybris_file,
             drop_table_first=args.drop_tables,
             unique_index_columns=index_columns,
-            label=args.label,
+            label=label if existing_label != label else None,
         )
         print(f"Inserted {inserted_rows_count} rows from {hybris_file}\n")
 
@@ -401,14 +412,17 @@ def load_pim_data(args) -> None:
     current_dir = Path(__file__).parent
     print(f"Current directory: {current_dir}")
     db_file: str = args.db_file
+    label: Optional[str] = args.label
 
     input_folder = Path(args.input_folder)
 
     index_columns: Optional[List[str]]
+    label_set: bool = False
 
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         for file_path in input_folder.glob("*.csv"):
+            export_date: datetime.datetime = get_export_date_from_file(file_path)
             current_file_suffix: str = file_prefix(file_path)
 
             if current_file_suffix == "item_availability":
@@ -437,13 +451,21 @@ def load_pim_data(args) -> None:
                 ]
             else:
                 index_columns = None
-
+            if not label_set:
+                existing_label: Optional[str] = db_get_label_for_date(
+                    conn, "pim", export_date
+                )
+                if existing_label == label:
+                    label = None
+                label_set = True
+            else:
+                label = None
             inserted_rows_count: int = load_file_into_db(
                 conn,
                 file_path,
                 drop_table_first=args.drop_tables,
                 unique_index_columns=index_columns,
-                label=args.label,
+                label=label,
             )
             print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
 
@@ -453,12 +475,15 @@ def load_doc_data(args) -> None:
     current_dir = Path(__file__).parent
     config_file = current_dir / "config.toml"
     with config_file.open("rb") as f:
-        config = tomllib.load(f)
+        config: dict[str, Any] = tomllib.load(f)
     print(f"Current directory: {current_dir}")
     # print(f"{config=}")
     # console.print(config)
 
     db_file: str = args.db_file
+    label: Optional[str] = args.label
+    label_set: bool = False
+    request_date: datetime.date = args.request_date
 
     input_folder = Path(args.input_folder)
     print(f"{input_folder=}")
@@ -473,16 +498,22 @@ def load_doc_data(args) -> None:
                     current_file_prefix = prefix
                     break
             console.print(f"{current_file_prefix=} - {file_path.name=}")
-
+            if not label_set:
+                existing_label: Optional[str] = db_get_label_for_date(
+                    conn, "doc", request_date
+                )
+                if existing_label == label:
+                    label = None
+                label_set = True
             total_inserted_rows_count: int = load_docfile_into_db(
                 conn,
                 file_path,
                 prefix=current_file_prefix,
-                request_date=args.request_date,
+                request_date=request_date,  # type: ignore
                 config=config,
                 drop_table_first=args.drop_tables,
                 unique_index_columns=index_columns,
-                label=args.label,
+                label=label,
             )
 
             print(f"Total inserted {total_inserted_rows_count} rows from {file_path}\n")

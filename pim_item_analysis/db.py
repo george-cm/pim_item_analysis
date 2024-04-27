@@ -10,6 +10,7 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from string import Template
+from typing import Any
 from typing import Dict
 from typing import List
 from typing import Literal
@@ -340,9 +341,9 @@ def db_add_label(
     conn: sqlite3.Connection,
     dataset_type: Literal["pim", "hybris", "doc"],
     dataset_datetime: datetime.datetime,
-    label: str,
+    label: Optional[str],
 ) -> None:
-    """Add label to the lables table."""
+    """Add label to the lables table. Overwrites label if it exists."""
     date_column: str = "request_date" if dataset_type == "doc" else "export_date"
     db_create_label_tables(conn)
     sql: LiteralString = f"""
@@ -355,6 +356,26 @@ def db_add_label(
         (dataset_datetime, label, label),
     )
     conn.commit()
+
+
+def db_get_label_for_date(
+    conn: sqlite3.Connection,
+    dataset_type: Literal["pim", "hybris", "doc"],
+    dataset_datetime: Union[datetime.datetime, datetime.date],
+) -> Optional[str]:
+    """Add label to the lables table."""
+    date_column: str = "request_date" if dataset_type == "doc" else "export_date"
+    db_create_label_tables(conn)
+    sql: LiteralString = f"""
+        SELECT label
+        FROM labels_{dataset_type}
+        WHERE {date_column} = ?
+        """
+    result: Any = conn.execute(
+        sql,
+        (dataset_datetime,),
+    ).fetchone()
+    return result[0] if result else None
 
 
 def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
