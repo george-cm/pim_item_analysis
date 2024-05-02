@@ -1,21 +1,14 @@
 [doc]
 
-file_prefixes = [
-    "doc data collection template",
-    "doc description template",
-    "pim sku load template",
-]
+file_prefixes = ["doc data collection", "doc description", "pim sku load"]
 
 [doc.file_sheets]
 
-"doc data collection template" = [
-    "doc cert data template",
-    "doc sku data template",
-]
+"doc data collection" = ["doc cert data template", "doc sku data template"]
 
-"doc description template" = ["sku list complete_translation"]
+"doc description" = ["sku list complete_translation"]
 
-"pim sku load template" = ["pim sku load"]
+"pim sku load" = ["pim sku load"]
 
 
 [doc.sheet_headers."doc cert data template"]

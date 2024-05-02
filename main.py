@@ -23,8 +23,8 @@ from pim_item_analysis.db import file_prefix
 from pim_item_analysis.db import get_export_date_from_file
 from pim_item_analysis.db import round_seconds
 from pim_item_analysis.loaders import load_docfile_into_db
-from pim_item_analysis.loaders import load_excel_to_db
-from pim_item_analysis.loaders import load_file_into_db
+from pim_item_analysis.loaders import load_hybris_excel_to_db
+from pim_item_analysis.loaders import load_pimfile_to_db
 from pim_item_analysis.views import display_in_table
 
 console = Console()
@@ -213,13 +213,6 @@ def parser_doc(subparsers) -> None:
         help="Database file.",
         default="pim_item_analysis.db",
     )
-    # parser.add_argument(
-    #     "--descending",
-    #     "-d",
-    #     action="store_true",
-    #     help="List in descending order.",
-    #     default=False,
-    # )
     parser.set_defaults(func=doc_analysis)
 
 
@@ -315,7 +308,7 @@ def load_hybris_data(args) -> None:
         existing_label: Optional[str] = db_get_label_for_date(
             conn, "hybris", export_date
         )
-        inserted_rows_count = load_excel_to_db(
+        inserted_rows_count = load_hybris_excel_to_db(
             conn,
             hybris_file,
             drop_table_first=args.drop_tables,
@@ -460,7 +453,7 @@ def load_pim_data(args) -> None:
                 label_set = True
             else:
                 label = None
-            inserted_rows_count: int = load_file_into_db(
+            inserted_rows_count: int = load_pimfile_to_db(
                 conn,
                 file_path,
                 drop_table_first=args.drop_tables,

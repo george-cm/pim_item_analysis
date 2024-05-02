@@ -28,7 +28,7 @@ from pim_item_analysis.db import normalize_name
 from pim_item_analysis.db import round_seconds
 
 
-def load_file_into_db(
+def load_pimfile_to_db(
     conn: sqlite3.Connection,
     file_path: Path,
     drop_table_first: bool = False,
@@ -36,6 +36,18 @@ def load_file_into_db(
     label: str | None = None,
 ) -> int:
     """Load file into the database"""
+
+    header_maps: Dict[str, Dict[str, str]] = {
+        "item_texts": {
+            "Item.Item no.": "Item no.",
+            "SKU": "SKU",
+            "Language-specific data.Language": "Language",
+            "Language-specific data.Item Name": "Item Name",
+            "Language-specific data.Item Short Description": "Item Short Description",
+            "Language-specific data.Item Long description": "Item Long description",
+        }
+    }
+
     current_file_suffix: str = file_prefix(file_path)
     export_date: datetime.datetime = get_export_date_from_file(file_path)
     print(current_file_suffix)
@@ -43,6 +55,9 @@ def load_file_into_db(
     with file_path.open(encoding="utf-8") as f:
         csv_reader: Iterator[List[str]] = csv.reader(f)
         header: List[str] = next(csv_reader)
+        if current_file_suffix in header_maps:
+            header = [header_maps[current_file_suffix][x] for x in header]
+
         columns: list[str] = [x for x in (["export_date"] + header)]
         columns_str: str = ", ".join([f"[{x}]" for x in columns])
         extra_fields: dict[str, str] = {
@@ -77,7 +92,7 @@ def load_file_into_db(
     return inserted_row_count
 
 
-def load_excel_to_db(
+def load_hybris_excel_to_db(
     conn: sqlite3.Connection,
     file_path: Path,
     drop_table_first: bool = False,
@@ -152,7 +167,9 @@ def load_docfile_into_db(
         in_memory_file = io.BytesIO(f.read())
 
     sheets: List[str] = config["doc"]["file_sheets"][prefix]
-    workbook: openpyxl.Workbook = openpyxl.load_workbook(in_memory_file, read_only=True)
+    workbook: openpyxl.Workbook = openpyxl.load_workbook(
+        in_memory_file, read_only=True, data_only=True
+    )
     for sh in workbook.worksheets:
         if sh.title.lower() not in sheets:
             continue
