@@ -34,6 +34,20 @@ file_prefixes = ["doc data collection", "doc description", "pim sku load"]
 'prod_manager eid' = 'required'
 'prod_manager_owner' = 'required'
 
+[doc.sheet_headers."sku_list_complete_translation"]
+
+'item no.' = 'required'
+'item short description' = 'required'
+'item long description' = 'do not use'
+'language' = 'required'
+'pim item status' = 'do not use'
+'sku' = 'do not use'
+'master/legal brand' = 'do not use'
+'ppe_category' = 'do not use'
+'product manager owner' = 'do not use'
+'business unit' = 'do not use'
+'pim traceability classification' = 'required'
+
 [doc.sheet_headers."sku list complete_translation"]
 
 'item no.' = 'required'
@@ -70,3 +84,12 @@ file_prefixes = ["doc data collection", "doc description", "pim sku load"]
 "sku list complete_translation" = { "header" = 6, "data" = 7 }
 
 "pim sku load" = { "header" = 2, "data" = 3 }
+
+[header_maps.item_texts]
+
+"Item.Item no." = "Item no."
+"SKU" = "SKU"
+"Language-specific data.Language" = "Language"
+"Language-specific data.Item Name" = "Item Name"
+"Language-specific data.Item Short Description" = "Item Short Description"
+"Language-specific data.Item Long description" = "Item Long description"

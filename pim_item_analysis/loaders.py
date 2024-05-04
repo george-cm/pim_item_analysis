@@ -31,22 +31,24 @@ from pim_item_analysis.db import round_seconds
 def load_pimfile_to_db(
     conn: sqlite3.Connection,
     file_path: Path,
+    config: Dict[str, Any],
     drop_table_first: bool = False,
     unique_index_columns: Optional[List[str]] = None,
     label: str | None = None,
 ) -> int:
     """Load file into the database"""
 
-    header_maps: Dict[str, Dict[str, str]] = {
-        "item_texts": {
-            "Item.Item no.": "Item no.",
-            "SKU": "SKU",
-            "Language-specific data.Language": "Language",
-            "Language-specific data.Item Name": "Item Name",
-            "Language-specific data.Item Short Description": "Item Short Description",
-            "Language-specific data.Item Long description": "Item Long description",
-        }
-    }
+    # header_maps = {
+    #     "item_texts": {
+    #         "Item.Item no.": "Item no.",
+    #         "SKU": "SKU",
+    #         "Language-specific data.Language": "Language",
+    #         "Language-specific data.Item Name": "Item Name",
+    #         "Language-specific data.Item Short Description": "Item Short Description",
+    #         "Language-specific data.Item Long description": "Item Long description",
+    #     }
+    # }
+    header_maps: Dict[str, Dict[str, str]] = config["header_maps"]
 
     current_file_suffix: str = file_prefix(file_path)
     export_date: datetime.datetime = get_export_date_from_file(file_path)
@@ -56,8 +58,7 @@ def load_pimfile_to_db(
         csv_reader: Iterator[List[str]] = csv.reader(f)
         header: List[str] = next(csv_reader)
         if current_file_suffix in header_maps:
-            header = [header_maps[current_file_suffix][x] for x in header]
-
+            header = [header_maps[current_file_suffix].get(x, x) for x in header]
         columns: list[str] = [x for x in (["export_date"] + header)]
         columns_str: str = ", ".join([f"[{x}]" for x in columns])
         extra_fields: dict[str, str] = {
@@ -67,17 +68,13 @@ def load_pimfile_to_db(
         fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[1:]}}
         if drop_table_first:
             db_drop_tables(conn, [current_file_suffix])
-        db_create_table(
-            conn, current_file_suffix, fields, unique_index_columns=unique_index_columns
-        )
+        db_create_table(conn, current_file_suffix, fields, unique_index_columns=unique_index_columns)
 
         sql: str = f"""
             INSERT OR IGNORE INTO {current_file_suffix} ({columns_str})
             VALUES ({','.join(['?' for _ in columns])})
         """
-        data: List[List[str | datetime.datetime]] = [
-            [export_date] + row for row in csv_reader
-        ]
+        data: List[List[str | datetime.datetime]] = [[export_date] + row for row in csv_reader]
 
         cursor = conn.cursor()
         cursor.executemany(sql, data)
@@ -86,9 +83,7 @@ def load_pimfile_to_db(
 
         # add the label
         if label and inserted_row_count > 0:
-            db_add_label(
-                conn, dataset_type="pim", dataset_datetime=export_date, label=label
-            )
+            db_add_label(conn, dataset_type="pim", dataset_datetime=export_date, label=label)
     return inserted_row_count
 
 
@@ -101,9 +96,7 @@ def load_hybris_excel_to_db(
 ) -> int:
     """Load Excel file to database."""
     current_file_suffix: str = file_prefix(file_path)
-    export_date: datetime.datetime = round_seconds(
-        datetime.datetime.fromtimestamp(file_path.stat().st_ctime)
-    )
+    export_date: datetime.datetime = round_seconds(datetime.datetime.fromtimestamp(file_path.stat().st_ctime))
     # print(export_date)
     with file_path.open("rb") as f:
         in_memory_file = io.BytesIO(f.read())
@@ -124,13 +117,9 @@ def load_hybris_excel_to_db(
     if drop_table_first:
         db_drop_tables(conn, [current_file_suffix])
 
-    db_create_table(
-        conn, current_file_suffix, fields, unique_index_columns=unique_index_columns
-    )
+    db_create_table(conn, current_file_suffix, fields, unique_index_columns=unique_index_columns)
 
-    data: List[List[Any]] = [
-        [export_date, f"{row[1]}~{row[0]}", *row] for row in row_iter
-    ]
+    data: List[List[Any]] = [[export_date, f"{row[1]}~{row[0]}", *row] for row in row_iter]
 
     sql: str = f"""
         INSERT OR IGNORE INTO {current_file_suffix} ({columns_str})
@@ -144,9 +133,7 @@ def load_hybris_excel_to_db(
 
     # add the label
     if label and inserted_row_count > 0:
-        db_add_label(
-            conn, dataset_type="hybris", dataset_datetime=export_date, label=label
-        )
+        db_add_label(conn, dataset_type="hybris", dataset_datetime=export_date, label=label)
     return inserted_row_count
 
 
@@ -157,7 +144,7 @@ def load_docfile_into_db(
     request_date: datetime.datetime,
     config: Dict[str, Any],
     drop_table_first: bool = False,
-    unique_index_columns: Optional[List[str]] = None,
+    # unique_index_columns: Optional[List[str]] = None,
     label: str | None = None,
 ) -> int:
     """Load doc Excel xlsx file into the database"""
@@ -167,20 +154,13 @@ def load_docfile_into_db(
         in_memory_file = io.BytesIO(f.read())
 
     sheets: List[str] = config["doc"]["file_sheets"][prefix]
-    workbook: openpyxl.Workbook = openpyxl.load_workbook(
-        in_memory_file, read_only=True, data_only=True
-    )
+    workbook: openpyxl.Workbook = openpyxl.load_workbook(in_memory_file, read_only=True, data_only=True)
     for sh in workbook.worksheets:
         if sh.title.lower() not in sheets:
             continue
         # print(f"sheet name: {sh.title}")
         table_name: str = normalize_name(sh.title)
         config_header = list(config["doc"]["sheet_headers"][sh.title.lower()].keys())
-        # config_header_requirements = list(
-        #     config["doc"]["sheet_headers"][sh.title.lower()].values()
-        # )
-        # print(f"{config_header=}")
-        # print(f"{config_header_requirements=}")
         start_row_header = config["doc"]["start_rows"][sh.title.lower()]["header"]
         start_row_data = config["doc"]["start_rows"][sh.title.lower()]["data"]
         data: List[Any] = []
@@ -188,9 +168,7 @@ def load_docfile_into_db(
         for i, row in enumerate(sh.iter_rows(values_only=True), start=1):  # type: ignore
             # getting rid of extra columns from the end which are not
             # parte of the inital template that the user might have added
-            trimmed_row: Tuple[str | float | datetime.datetime | None, ...] = row[
-                : len(config_header)
-            ]
+            trimmed_row: Tuple[str | float | datetime.datetime | None, ...] = row[: len(config_header)]
             if i == start_row_header:
                 columns: List[str] = list(("request_date", *trimmed_row, "file_name"))  # type: ignore
                 columns_str: str = ", ".join([f"[{x}]" for x in columns])
@@ -200,13 +178,15 @@ def load_docfile_into_db(
                 }
                 fields: dict[str, str] = {
                     **extra_fields,
-                    **{
-                        k: "DATE" if "date" in k.lower() else "TEXT"
-                        for k in columns[1:]
-                    },
+                    **{k: "DATE" if "date" in k.lower() else "TEXT" for k in columns[1:]},
                 }
                 if drop_table_first:
                     db_drop_tables(conn, [table_name])
+                required_columns = config["doc"]["sheet_headers"][sh.title.lower()]
+                unique_index_columns = [
+                    x for x in columns if (x.lower() in required_columns and required_columns[x.lower()] == "required")
+                ]
+                print(unique_index_columns)
                 db_create_table(
                     conn,
                     table_name,
@@ -221,9 +201,7 @@ def load_docfile_into_db(
             if i >= start_row_data:
                 # print(f"{i}:data: {row}")
                 data_row: List[Any] = [
-                    x.strip()
-                    if isinstance(x, str)
-                    else (x.date() if isinstance(x, datetime.datetime) else x)
+                    x.strip() if isinstance(x, str) else (x.date() if isinstance(x, datetime.datetime) else x)
                     for x in trimmed_row
                 ]
                 # print(f"{data_row=}")
@@ -238,14 +216,10 @@ def load_docfile_into_db(
         total_inserted_row_count += inserted_row_count
         conn.commit()
 
-        print(
-            f"Inserted {inserted_row_count} rows from sheet {sh.title} from file {file_path}\n"
-        )
+        print(f"Inserted {inserted_row_count} rows from sheet {sh.title} from file {file_path}\n")
     # add the label
     if label and inserted_row_count > 0:
-        db_add_label(
-            conn, dataset_type="doc", dataset_datetime=request_date, label=label
-        )
+        db_add_label(conn, dataset_type="doc", dataset_datetime=request_date, label=label)
     return total_inserted_row_count
 
 

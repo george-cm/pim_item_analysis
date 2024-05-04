@@ -12,11 +12,14 @@ openpyxl = "^3.1.2"
 xlsxwriter = "^3.2.0"
 rich = "^13.7.1"
 types-openpyxl = "^3.1.0.20240425"
-ibis-framework = {extras = ["pandas", "sqlite"], version = "^8.0.0"}
+ibis-framework = { extras = ["pandas", "sqlite"], version = "^8.0.0" }
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.3.4"
 pytest = "^8.1.1"
+
+[tool.poetry.scripts]
+pia = "main:main"
 
 [build-system]
 requires = ["poetry-core"]
@@ -30,3 +33,15 @@ force-single-line = true
 
 [tool.isort]
 force_single_line = true
+
+[tool.black]
+line-length = 120
+
+[tool.pycodestyle]
+line-length = 120
+
+[tool.basedpyright]
+reportImplicitStringConcatenation = false
+
+[tool.pyright]
+reportImplicitStringConcatenation = false

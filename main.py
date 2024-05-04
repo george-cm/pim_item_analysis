@@ -6,6 +6,7 @@ import sqlite3
 import tomllib
 from pathlib import Path
 from typing import Any
+from typing import Dict
 from typing import List
 from typing import Literal
 from typing import Optional
@@ -231,8 +232,7 @@ def parser_add_label(subparsers) -> None:
     parser.add_argument(
         "dataset_number",
         type=int,
-        help="Number of the dataset to add a label to, from the list command."
-        " Overwrites any existing label.",
+        help="Number of the dataset to add a label to, from the list command." " Overwrites any existing label.",
     )
     parser.add_argument("dataset_label", type=str, help="Label to add.")
     parser.add_argument(
@@ -299,15 +299,11 @@ def load_hybris_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     index_columns: List[str] = ["export_date", "Item no."]
     # print(f"{args.drop_tables=}")
-    export_date: datetime.datetime = round_seconds(
-        datetime.datetime.fromtimestamp(hybris_file.stat().st_ctime)
-    )
+    export_date: datetime.datetime = round_seconds(datetime.datetime.fromtimestamp(hybris_file.stat().st_ctime))
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         label: Optional[str] = args.label
-        existing_label: Optional[str] = db_get_label_for_date(
-            conn, "hybris", export_date
-        )
+        existing_label: Optional[str] = db_get_label_for_date(conn, "hybris", export_date)
         inserted_rows_count = load_hybris_excel_to_db(
             conn,
             hybris_file,
@@ -324,15 +320,9 @@ def list_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
-        pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(
-            conn
-        )
-        hybris_datasets: List[List[str | datetime.datetime | int]] = (
-            db_get_hybris_datasets(conn)
-        )
-        doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(
-            conn
-        )
+        pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(conn)
+        hybris_datasets: List[List[str | datetime.datetime | int]] = db_get_hybris_datasets(conn)
+        doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(conn)
         header: List[str] = [
             "Dataset\nNumber",
             "Export date string",
@@ -402,7 +392,9 @@ def list_data(args) -> None:
 
 def load_pim_data(args) -> None:
     """Load data into the database"""
-    current_dir = Path(__file__).parent
+    current_dir: Path = Path(__file__).parent
+    config: Dict[str, Any] = load_config(current_dir)
+    print(f"Current directory: {current_dir}")
     print(f"Current directory: {current_dir}")
     db_file: str = args.db_file
     label: Optional[str] = args.label
@@ -445,9 +437,7 @@ def load_pim_data(args) -> None:
             else:
                 index_columns = None
             if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(
-                    conn, "pim", export_date
-                )
+                existing_label: Optional[str] = db_get_label_for_date(conn, "pim", export_date)
                 if existing_label == label:
                     label = None
                 label_set = True
@@ -456,6 +446,7 @@ def load_pim_data(args) -> None:
             inserted_rows_count: int = load_pimfile_to_db(
                 conn,
                 file_path,
+                config=config,
                 drop_table_first=args.drop_tables,
                 unique_index_columns=index_columns,
                 label=label,
@@ -465,10 +456,8 @@ def load_pim_data(args) -> None:
 
 def load_doc_data(args) -> None:
     """Load data into the database"""
-    current_dir = Path(__file__).parent
-    config_file = current_dir / "config.toml"
-    with config_file.open("rb") as f:
-        config: dict[str, Any] = tomllib.load(f)
+    current_dir: Path = Path(__file__).parent
+    config: Dict[str, Any] = load_config(current_dir)
     print(f"Current directory: {current_dir}")
     # print(f"{config=}")
     # console.print(config)
@@ -492,9 +481,7 @@ def load_doc_data(args) -> None:
                     break
             console.print(f"{current_file_prefix=} - {file_path.name=}")
             if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(
-                    conn, "doc", request_date
-                )
+                existing_label: Optional[str] = db_get_label_for_date(conn, "doc", request_date)
                 if existing_label == label:
                     label = None
                 label_set = True
@@ -505,47 +492,24 @@ def load_doc_data(args) -> None:
                 request_date=request_date,  # type: ignore
                 config=config,
                 drop_table_first=args.drop_tables,
-                unique_index_columns=index_columns,
+                # unique_index_columns=index_columns,
                 label=label,
             )
 
-            print(f"Total inserted {total_inserted_rows_count} rows from {file_path}\n")
+            print(
+                f"Total inserted {
+                    total_inserted_rows_count} rows from {file_path}\n"
+            )
 
-            # if current_file_suffix == "item_availability":
-            #     index_columns = ["export_date", "Item no."]
-            # elif current_file_suffix == "item_classification":
-            #     index_columns = [
-            #         "export_date",
-            #         "Item no.",
-            #         "Structure.Identifier",
-            #         "Structure group.Structure group identifier",
-            #     ]
-            # elif current_file_suffix == "item_pricing":
-            #     index_columns = [
-            #         "export_date",
-            #         "Item no.",
-            #         "Condition record no.",
-            #     ]
-            # elif current_file_suffix == "product_availability":
-            #     index_columns = ["export_date", "Product no."]
-            # elif current_file_suffix == "product_classification":
-            #     index_columns = [
-            #         "export_date",
-            #         "Product no.",
-            #         "Structure.Identifier",
-            #         "Structure group.Structure group identifier",
-            #     ]
-            # else:
-            #     index_columns = None
 
-            # inserted_rows_count: int = load_file_into_db(
-            #     conn,
-            #     file_path,
-            #     drop_table_first=args.drop_tables,
-            #     unique_index_columns=index_columns,
-            #     label=args.label,
-            # )
-            # print(f"Inserted {inserted_rows_count} rows from {file_path}\n")
+def load_config(config_folder: Path | str) -> Dict[str, Any]:
+    """Load the config file"""
+    if isinstance(config_folder, str):
+        config_folder = Path(config_folder)
+    config_file = config_folder / "config.toml"
+    with config_file.open("rb") as f:
+        config: dict[str, Any] = tomllib.load(f)
+    return config
 
 
 if __name__ == "__main__":

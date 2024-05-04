@@ -19,6 +19,27 @@ from typing import Optional
 from typing import Union
 
 
+class Missing:
+    def __init__(self, column_name: str):
+        self.column_name = column_name
+
+    def __str__(self):
+        return f"<MISSING VALUE IN COLUMN {self.column_name}>"
+
+    def __repr__(self):
+        return f"Missing({column_name})"
+
+
+def adapt_missing_value(val: Missing) -> str:
+    "Adapt Missing to str."
+    return str(val)
+
+
+def convert_missing_value(val: bytes) -> Missing:
+    "Convert Missing string to Missing obj."
+    return val.decode("utf-8").strip("<>").replace("MISSING VALUE IN COLUMN").strip()
+
+
 def adapt_date_iso(val: datetime.date) -> str:
     """Adapt datetime.date to ISO 8601 date."""
     return val.isoformat()
@@ -57,6 +78,8 @@ def register_adapters_and_converters() -> None:
     sqlite3.register_converter("date", convert_date)
     sqlite3.register_converter("datetime", convert_datetime)
     sqlite3.register_converter("timestamp", convert_timestamp)
+    sqlite3.register_adapter(Missing, adapt_missing_value)
+    sqlite3.register_converter("missing", convert_missing_value)
 
 
 register_adapters_and_converters()
@@ -173,27 +196,33 @@ def db_create_table(
 
 def db_create_label_tables(conn: sqlite3.Connection) -> None:
     """Create labels tables in the database."""
-    conn.execute("""
+    conn.execute(
+        """
             CREATE TABLE IF NOT EXISTS labels_pim (
                 id          INTEGER  PRIMARY KEY AUTOINCREMENT,
                 export_date DATETIME NOT NULL UNIQUE,
                 label       TEXT
             )
-            """)
-    conn.execute("""
+            """
+    )
+    conn.execute(
+        """
             CREATE TABLE IF NOT EXISTS labels_hybris (
                 id          INTEGER  PRIMARY KEY AUTOINCREMENT,
                 export_date DATETIME NOT NULL UNIQUE,
                 label       TEXT
             )
-            """)
-    conn.execute("""
+            """
+    )
+    conn.execute(
+        """
             CREATE TABLE IF NOT EXISTS labels_doc (
                 id              INTEGER  PRIMARY KEY AUTOINCREMENT,
                 request_date  DATETIME NOT NULL UNIQUE,
                 label           TEXT
             )
-            """)
+            """
+    )
 
 
 def db_get_pim_datasets(
@@ -201,7 +230,8 @@ def db_get_pim_datasets(
 ) -> List[List[str | datetime.datetime | int]]:
     """Get list of PIM datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
-    datasets: sqlite3.Cursor = cursor.execute(f"""
+    datasets: sqlite3.Cursor = cursor.execute(
+        f"""
         SELECT "left"."export_date",
                "left"."Item count",
                "right"."label"
@@ -217,7 +247,8 @@ def db_get_pim_datasets(
             AS "left"
         LEFT JOIN labels_pim AS "right"
             ON "left"."export_date" = "right"."export_date"
-    """)
+    """
+    )
     return list(datasets)
 
 
@@ -228,7 +259,8 @@ def db_get_hybris_datasets(
     cursor: sqlite3.Cursor = conn.cursor()
     if not db_table_exists(conn, "skus_status"):
         return []
-    datasets: sqlite3.Cursor = cursor.execute(f"""
+    datasets: sqlite3.Cursor = cursor.execute(
+        f"""
         SELECT "left"."export_date",
                "left"."Item count",
                "right"."label"
@@ -244,7 +276,8 @@ def db_get_hybris_datasets(
             AS "left"
         LEFT JOIN labels_hybris AS "right"
             ON "left"."export_date" = "right"."export_date"
-    """)
+    """
+    )
     return list(datasets)
 
 
@@ -253,7 +286,8 @@ def db_get_doc_datasets(
 ) -> List[List[str | datetime.datetime | int]]:
     """Get list of DoC datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
-    sql: Template = Template("""
+    sql: Template = Template(
+        """
         SELECT "left"."request_date",
             "left"."$counts_column",
             "left"."Sheet Name",
@@ -273,7 +307,8 @@ def db_get_doc_datasets(
             AS "left"
         LEFT JOIN labels_doc AS "right"
             ON "left"."request_date" = "right"."request_date"
-    """)
+    """
+    )
     all_data: List[List[str | datetime.datetime | int]] = []
     tables: Dict[str, str] = {
         "doc_cert_data_template": "CERTIFICATION_NUMBER",
@@ -285,9 +320,7 @@ def db_get_doc_datasets(
         order: str = "DESC" if descending else "ASC"
         if db_table_exists(conn, table_name):
             datasets: sqlite3.Cursor = cursor.execute(
-                sql.substitute(
-                    table_name=table_name, counts_column=counts_column, order=order
-                )
+                sql.substitute(table_name=table_name, counts_column=counts_column, order=order)
             )
             all_data.extend(list(datasets))
     return all_data
@@ -384,9 +417,7 @@ def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
         file_path = Path(file_path)
     file_name_parts = normalize_name(file_path.stem).split("_")
     if len(file_name_parts) < 2:
-        raise ValueError(
-            f"File name should contain at least one underscore: {file_path.stem}"
-        )
+        raise ValueError(f"File name should contain at least one underscore: {file_path.stem}")
     # check if the fist character in the second element of the list is a number
     if file_name_parts[1][0].isnumeric():
         return file_name_parts[0]
@@ -396,9 +427,7 @@ def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
 
 def round_seconds(precise_datetime: datetime.datetime) -> datetime.datetime:
     """Round to nearest second."""
-    adjusted_datetime: datetime.datetime = precise_datetime + datetime.timedelta(
-        seconds=0.5
-    )
+    adjusted_datetime: datetime.datetime = precise_datetime + datetime.timedelta(seconds=0.5)
     return adjusted_datetime.replace(microsecond=0)
 
 
