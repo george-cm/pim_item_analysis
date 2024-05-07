@@ -27,7 +27,10 @@ class Missing:
         return f"<MISSING VALUE IN COLUMN {self.column_name}>"
 
     def __repr__(self):
-        return f"Missing({column_name})"
+        return f"Missing({self.column_name})"
+
+    def __bool__(self):
+        return False
 
 
 def adapt_missing_value(val: Missing) -> str:

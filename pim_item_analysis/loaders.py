@@ -18,7 +18,9 @@ from typing import Optional
 from typing import Tuple
 
 import openpyxl
+from rich.console import Console
 
+from pim_item_analysis.db import Missing
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_drop_tables
@@ -26,6 +28,8 @@ from pim_item_analysis.db import file_prefix
 from pim_item_analysis.db import get_export_date_from_file
 from pim_item_analysis.db import normalize_name
 from pim_item_analysis.db import round_seconds
+
+console = Console()
 
 
 def load_pimfile_to_db(
@@ -38,22 +42,12 @@ def load_pimfile_to_db(
 ) -> int:
     """Load file into the database"""
 
-    # header_maps = {
-    #     "item_texts": {
-    #         "Item.Item no.": "Item no.",
-    #         "SKU": "SKU",
-    #         "Language-specific data.Language": "Language",
-    #         "Language-specific data.Item Name": "Item Name",
-    #         "Language-specific data.Item Short Description": "Item Short Description",
-    #         "Language-specific data.Item Long description": "Item Long description",
-    #     }
-    # }
     header_maps: Dict[str, Dict[str, str]] = config["header_maps"]
 
     current_file_suffix: str = file_prefix(file_path)
     export_date: datetime.datetime = get_export_date_from_file(file_path)
-    print(current_file_suffix)
-    print(export_date)
+    console.print(f"{current_file_suffix=}")
+    console.print(f"{export_date=}")
     with file_path.open(encoding="utf-8") as f:
         csv_reader: Iterator[List[str]] = csv.reader(f)
         header: List[str] = next(csv_reader)
@@ -137,6 +131,23 @@ def load_hybris_excel_to_db(
     return inserted_row_count
 
 
+def preprocess_doc_values(
+    row: List[str | datetime.datetime | int | float | Missing], columns: List[str], required_columns: List[str]
+) -> List[str | datetime.datetime | int | float | Missing]:
+    new_row = []
+    columns = [x.lower() for x in columns]
+    for i, x in enumerate(row):
+        if isinstance(x, str):
+            x = x.strip()
+        # if row[-1] == "DoC Description TURBOLITE EDGE.xlsx" and not x and columns[i] in required_columns:
+        #     breakpoint()
+        if not x and columns[i] in required_columns:
+            new_row.append(Missing(columns[i]))
+        else:
+            new_row.append(x)
+    return new_row
+
+
 def load_docfile_into_db(
     conn: sqlite3.Connection,
     file_path: Path,
@@ -144,7 +155,6 @@ def load_docfile_into_db(
     request_date: datetime.datetime,
     config: Dict[str, Any],
     drop_table_first: bool = False,
-    # unique_index_columns: Optional[List[str]] = None,
     label: str | None = None,
 ) -> int:
     """Load doc Excel xlsx file into the database"""
@@ -167,7 +177,7 @@ def load_docfile_into_db(
         empty_rows: int = 0
         for i, row in enumerate(sh.iter_rows(values_only=True), start=1):  # type: ignore
             # getting rid of extra columns from the end which are not
-            # parte of the inital template that the user might have added
+            # part of the inital template that the user might have added
             trimmed_row: Tuple[str | float | datetime.datetime | None, ...] = row[: len(config_header)]
             if i == start_row_header:
                 columns: List[str] = list(("request_date", *trimmed_row, "file_name"))  # type: ignore
@@ -176,17 +186,24 @@ def load_docfile_into_db(
                     "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
                     "request_date": "DATETIME NOT NULL",
                 }
+                required_columns = [
+                    k for k, v in config["doc"]["sheet_headers"][sh.title.lower()].items() if v == "required"
+                ]
+                # console.print(required_columns)
+                unique_index_columns = ["request_date"] + [x for x in columns if x.lower() in required_columns]
+                fields_pass1 = {k: "DATETIME" if "date" in k.lower() else "TEXT" for k in columns[1:]}
+                fields_pass2 = {
+                    k: f"{v} NOT NULL" if k.lower() in required_columns else v for k, v in fields_pass1.items()
+                }
                 fields: dict[str, str] = {
                     **extra_fields,
-                    **{k: "DATE" if "date" in k.lower() else "TEXT" for k in columns[1:]},
+                    **fields_pass2,
                 }
+                # console.print("fields = ")
+                # console.print(fields)
                 if drop_table_first:
                     db_drop_tables(conn, [table_name])
-                required_columns = config["doc"]["sheet_headers"][sh.title.lower()]
-                unique_index_columns = [
-                    x for x in columns if (x.lower() in required_columns and required_columns[x.lower()] == "required")
-                ]
-                print(unique_index_columns)
+                # print(unique_index_columns)
                 db_create_table(
                     conn,
                     table_name,
@@ -200,13 +217,17 @@ def load_docfile_into_db(
                 # print(f"{i}:header: {row}")
             if i >= start_row_data:
                 # print(f"{i}:data: {row}")
-                data_row: List[Any] = [
-                    x.strip() if isinstance(x, str) else (x.date() if isinstance(x, datetime.datetime) else x)
-                    for x in trimmed_row
-                ]
-                # print(f"{data_row=}")
-                if any(data_row):
-                    data.append([request_date] + data_row + [file_path.name])
+                if any(trimmed_row):
+                    data_row_raw = list((request_date, *trimmed_row, file_path.name))
+                    assert len(data_row_raw) == len(columns)
+                    data_row = preprocess_doc_values(data_row_raw, columns, required_columns)
+                    # data_row: List[Any] = [
+                    #     x.strip() if isinstance(x, str) else (x.date() if isinstance(x, datetime.datetime) else x)
+                    #     for x in trimmed_row
+                    # ]
+                    # print(f"{list(data_row)=}")
+                    # print(f"{len(data_row)=}")
+                    data.append(list(data_row))
                 else:
                     empty_rows += 1
             if empty_rows >= 3:

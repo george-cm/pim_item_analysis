@@ -425,6 +425,12 @@ def load_pim_data(args) -> None:
                     "Item no.",
                     "Condition record no.",
                 ]
+            elif current_file_suffix == "item_texts":
+                index_columns = [
+                    "export_date",
+                    "Item no.",
+                    "Language",
+                ]
             elif current_file_suffix == "product_availability":
                 index_columns = ["export_date", "Product no."]
             elif current_file_suffix == "product_classification":
