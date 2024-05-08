@@ -16,6 +16,7 @@ from rich.console import Console
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_label_tables
+from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_get_doc_datasets
 from pim_item_analysis.db import db_get_hybris_datasets
 from pim_item_analysis.db import db_get_label_for_date
@@ -198,6 +199,48 @@ def parser_list(subparsers) -> None:
         default=False,
     )
     parser.set_defaults(func=list_data)
+
+
+def parser_add_doc_analyses_date_pairs(subparsers) -> None:
+    """Add doc_analyses_date_pairs"""
+
+    parser: argparse.ArgumentParser = subparsers.add_parser(
+        "add_doc_analysis_date_pairs",
+        help="Pair a DoC request data set with a PIM data export dataset"
+        " by their request_date and export_date respectively.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "doc_request_date",
+        type=datetime.date.fromisoformat,
+        help="Date of the request. Format: YYYY-MM-DD",
+    )
+    parser.add_argument(
+        "pim_export_date",
+        type=datetime.datetime.fromisoformat,
+        help="Date of the request. Format: YYYY-MM-DD HH:MM:SS",
+    )
+    parser.add_argument(
+        "analysis_name",
+        type=str,
+        help="Name of the analysis dates pair.",
+        default=None,
+    )
+    parser.add_argument(
+        "--db_file",
+        "-dbf",
+        type=str,
+        help="Database file.",
+        default="pim_item_analysis.db",
+    )
+    parser.add_argument(
+        "--drop_tables",
+        "-dt",
+        action="store_true",
+        help="Drop tables before loading data.",
+        default=False,
+    )
+    parser.set_defaults(func=add_doc_analysis_date_pairs)
 
 
 def parser_doc(subparsers) -> None:
