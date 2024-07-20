@@ -13,10 +13,12 @@ from typing import Optional
 
 from rich.console import Console
 
+from pim_item_analysis.cli import add_doc_analysis_date_pairs
+
+# from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
 from pim_item_analysis.db import db_create_label_tables
-from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_get_doc_datasets
 from pim_item_analysis.db import db_get_hybris_datasets
 from pim_item_analysis.db import db_get_label_for_date
@@ -52,6 +54,7 @@ def main() -> None:
     parser_load_doc_data(subparsers)
     parser_list(subparsers)
     parser_add_label(subparsers)
+    parser_add_doc_analyses_date_pairs(subparsers)
     parser_doc(subparsers)
 
     args: argparse.Namespace = parser.parse_args()
@@ -178,7 +181,7 @@ def parser_load_doc_data(subparsers) -> None:
 
 
 def parser_list(subparsers) -> None:
-    """Create the parser for the "list" command"""
+    """Create the parser for the 'list' command"""
     parser: argparse.ArgumentParser = subparsers.add_parser(
         "list",
         help="List the datasets in the database.",
@@ -244,7 +247,7 @@ def parser_add_doc_analyses_date_pairs(subparsers) -> None:
 
 
 def parser_doc(subparsers) -> None:
-    """Create the parser for the "list" command"""
+    """Create the parser for the 'doc' command"""
     parser: argparse.ArgumentParser = subparsers.add_parser(
         "doc",
         help="DoC related commands.",
@@ -275,7 +278,8 @@ def parser_add_label(subparsers) -> None:
     parser.add_argument(
         "dataset_number",
         type=int,
-        help="Number of the dataset to add a label to, from the list command." " Overwrites any existing label.",
+        help="Number of the dataset to add a label to, from the list command."
+        " Overwrites any existing label.",
     )
     parser.add_argument("dataset_label", type=str, help="Label to add.")
     parser.add_argument(
@@ -342,11 +346,15 @@ def load_hybris_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     index_columns: List[str] = ["export_date", "Item no."]
     # print(f"{args.drop_tables=}")
-    export_date: datetime.datetime = round_seconds(datetime.datetime.fromtimestamp(hybris_file.stat().st_ctime))
+    export_date: datetime.datetime = round_seconds(
+        datetime.datetime.fromtimestamp(hybris_file.stat().st_ctime)
+    )
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         label: Optional[str] = args.label
-        existing_label: Optional[str] = db_get_label_for_date(conn, "hybris", export_date)
+        existing_label: Optional[str] = db_get_label_for_date(
+            conn, "hybris", export_date
+        )
         inserted_rows_count = load_hybris_excel_to_db(
             conn,
             hybris_file,
@@ -363,9 +371,15 @@ def list_data(args) -> None:
     conn: sqlite3.Connection = db_create_connection(db_file)
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
-        pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(conn)
-        hybris_datasets: List[List[str | datetime.datetime | int]] = db_get_hybris_datasets(conn)
-        doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(conn)
+        pim_datasets: List[List[str | datetime.datetime | int]] = db_get_pim_datasets(
+            conn
+        )
+        hybris_datasets: List[List[str | datetime.datetime | int]] = (
+            db_get_hybris_datasets(conn)
+        )
+        doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(
+            conn
+        )
         header: List[str] = [
             "Dataset\nNumber",
             "Export date string",
@@ -486,7 +500,9 @@ def load_pim_data(args) -> None:
             else:
                 index_columns = None
             if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(conn, "pim", export_date)
+                existing_label: Optional[str] = db_get_label_for_date(
+                    conn, "pim", export_date
+                )
                 if existing_label == label:
                     label = None
                 label_set = True
@@ -519,7 +535,7 @@ def load_doc_data(args) -> None:
     input_folder = Path(args.input_folder)
     print(f"{input_folder=}")
 
-    index_columns: Optional[List[str]] = None
+    # index_columns: Optional[List[str]] = None
 
     with db_create_connection(db_file) as conn:
         for file_path in input_folder.glob("*.xlsx"):
@@ -530,7 +546,9 @@ def load_doc_data(args) -> None:
                     break
             console.print(f"{current_file_prefix=} - {file_path.name=}")
             if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(conn, "doc", request_date)
+                existing_label: Optional[str] = db_get_label_for_date(
+                    conn, "doc", request_date
+                )
                 if existing_label == label:
                     label = None
                 label_set = True
@@ -545,10 +563,7 @@ def load_doc_data(args) -> None:
                 label=label,
             )
 
-            print(
-                f"Total inserted {
-                    total_inserted_rows_count} rows from {file_path}\n"
-            )
+            print(f"Total inserted {total_inserted_rows_count} rows from {file_path}\n")
 
 
 def load_config(config_folder: Path | str) -> Dict[str, Any]:

@@ -20,6 +20,8 @@ from typing import Union
 
 
 class Missing:
+    """Missing value placeholder."""
+
     def __init__(self, column_name: str):
         self.column_name = column_name
 
@@ -40,7 +42,12 @@ def adapt_missing_value(val: Missing) -> str:
 
 def convert_missing_value(val: bytes) -> Missing:
     "Convert Missing string to Missing obj."
-    return val.decode("utf-8").strip("<>").replace("MISSING VALUE IN COLUMN").strip()
+    return Missing(
+        val.decode("utf-8", errors="strict")
+        .strip("<>")
+        .replace("MISSING VALUE IN COLUMN", "")
+        .strip()
+    )
 
 
 def adapt_date_iso(val: datetime.date) -> str:
@@ -323,7 +330,9 @@ def db_get_doc_datasets(
         order: str = "DESC" if descending else "ASC"
         if db_table_exists(conn, table_name):
             datasets: sqlite3.Cursor = cursor.execute(
-                sql.substitute(table_name=table_name, counts_column=counts_column, order=order)
+                sql.substitute(
+                    table_name=table_name, counts_column=counts_column, order=order
+                )
             )
             all_data.extend(list(datasets))
     return all_data
@@ -420,7 +429,9 @@ def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
         file_path = Path(file_path)
     file_name_parts = normalize_name(file_path.stem).split("_")
     if len(file_name_parts) < 2:
-        raise ValueError(f"File name should contain at least one underscore: {file_path.stem}")
+        raise ValueError(
+            f"File name should contain at least one underscore: {file_path.stem}"
+        )
     # check if the fist character in the second element of the list is a number
     if file_name_parts[1][0].isnumeric():
         return file_name_parts[0]
@@ -430,7 +441,9 @@ def file_prefix(file_path: Union[Path, str]) -> str:  # type: ignore
 
 def round_seconds(precise_datetime: datetime.datetime) -> datetime.datetime:
     """Round to nearest second."""
-    adjusted_datetime: datetime.datetime = precise_datetime + datetime.timedelta(seconds=0.5)
+    adjusted_datetime: datetime.datetime = precise_datetime + datetime.timedelta(
+        seconds=0.5
+    )
     return adjusted_datetime.replace(microsecond=0)
 
 

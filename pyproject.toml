@@ -13,6 +13,8 @@ xlsxwriter = "^3.2.0"
 rich = "^13.7.1"
 types-openpyxl = "^3.1.0.20240425"
 ibis-framework = { extras = ["pandas", "sqlite"], version = "^8.0.0" }
+pyqt6 = "^6.7.0"
+maya = "^0.6.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.3.4"
