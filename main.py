@@ -11,8 +11,10 @@ from typing import List
 from typing import Literal
 from typing import Optional
 
+import pyperclip
 from rich.console import Console
 
+from pim_item_analysis.analyses import doc_item_search_list
 from pim_item_analysis.cli import add_doc_analysis_date_pairs
 
 # from pim_item_analysis.db import db_create_table
@@ -254,6 +256,13 @@ def parser_doc(subparsers) -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
+        "--request_date",
+        "-rd",
+        type=str,
+        required=False,
+        help="DoC request date for which to get list of items to search in PIM.",
+    )
+    parser.add_argument(
         "--db_file",
         "-dbf",
         type=str,
@@ -296,29 +305,12 @@ def doc_analysis(args) -> None:
     """DoC related commands"""
     db_file: str = args.db_file
     with db_create_connection(db_file) as conn:
-        sql: str = """
-            SELECT
-                CERTIFICATION_NUMBER,
-                "MODULE NUMBER",
-                LEGISLATION_TYPE,
-                LEGISLATION_ID,
-                -- replace(CERT_ISSUE_DATE,"T", " ") as CERT_ISSUE_DATE,
-                -- replace(CERT_EXP_DATE, "T", " ") as CERT_EXP_DATE,
-                CERT_ISSUE_DATE,
-                CERT_EXP_DATE,
-                CERT_STANDARD_LIST,
-                NB_NUMBER,
-                MNFR_CODE_NAME,
-                PRODUCT_NAME_CERT,
-                file_name
-            FROM
-                doc_cert_data_template
-        """
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        results = cursor.fetchall()
-        for result in results:
-            print(result)
+        if args.request_date:
+            item_search_list: List[str] = doc_item_search_list(conn, args.request_date)
+            pim_search_str: str = "\n".join(item_search_list)
+            pyperclip.copy(pim_search_str)
+            print(pim_search_str)
+            print(f"{len(item_search_list)} item numbers copied to clipboard.")
 
 
 def add_label(args) -> None:

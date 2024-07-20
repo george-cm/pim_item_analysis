@@ -289,7 +289,9 @@ def load_doc_analysis_date_pair(
         conn,
         table_name,
         columns=columns,
-        unique_index_columns=["analysis_name", "pim_export_date", "doc_request_date"],
+        unique_index_columns=[
+            "analysis_name"
+        ],  # , "pim_export_date", "doc_request_date"],
     )
     columns_str: str = ", ".join([f'"{k}"' for k in column_names])
     sql: str = f"""

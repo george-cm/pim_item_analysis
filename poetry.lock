@@ -626,6 +626,16 @@ plugins = ["importlib-metadata"]
 windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
+name = "pyperclip"
+version = "1.9.0"
+description = "A cross-platform clipboard module for Python. (Only handles plain text for now.)"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pyperclip-1.9.0.tar.gz", hash = "sha256:b7de0142ddc81bfc5c7507eea19da920b92252b548b96186caf94a5e2527d310"},
+]
+
+[[package]]
 name = "pyqt6"
 version = "6.7.0"
 description = "Python bindings for the Qt cross platform application toolkit"
@@ -1078,4 +1088,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "7c3e7be2ca53e4eb78b822ac93b2d2bb9ef0b250f6c1cd6a1e1a353e9e18e23f"
+content-hash = "ecaeccb10ff1cfe07519098bb882687b0c7d166c275fd82da50440adcf3f5660"
