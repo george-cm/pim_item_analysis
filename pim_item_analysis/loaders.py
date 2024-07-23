@@ -46,38 +46,57 @@ def load_pimfile_to_db(
     export_date: datetime.datetime = get_export_date_from_file(file_path)
     console.print(f"{current_file_suffix=}")
     console.print(f"{export_date=}")
+
+    cursor = conn.cursor()
+
+    # add the export_data to the pim_datasets table
+    db_create_table(
+        conn,
+        "pim_datasets",
+        {
+            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "export_date": "DATETIME NOT NULL",
+        },
+    )
+    sql: str = "SELECT id FROM pim_datasets WHERE export_date = ?"
+    res = cursor.execute(sql, (export_date,)).fetchone()
+    if not res:
+        sql = "INSERT INTO pim_datasets (export_date) VALUES (?) RETURNING id"
+        res = cursor.execute(sql, (export_date,)).fetchone()
+    pim_dataset_id: int = res[0]
+
     with file_path.open(encoding="utf-8") as f:
         csv_reader: Iterator[List[str]] = csv.reader(f)
         header: List[str] = next(csv_reader)
         if current_file_suffix in header_maps:
             header = [header_maps[current_file_suffix].get(x, x) for x in header]
-        columns: list[str] = [x for x in (["export_date"] + header)]
+        columns: list[str] = [x for x in (["export_date", "dataset_id"] + header)]
         columns_str: str = ", ".join([f"[{x}]" for x in columns])
         extra_fields: dict[str, str] = {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-            "export_date": "DATETIME NOT NULL",
+            "export_date": "DATETIME NOT NULL REFERENCES pim_datasets('export_date')",
+            "dataset_id": "INTEGER NOT NULL REFERENCES pim_datasets('id')",
         }
-        fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[1:]}}
+        fields: dict[str, str] = {**extra_fields, **{k: "TEXT" for k in columns[2:]}}
         if drop_table_first:
             db_drop_tables(conn, [current_file_suffix])
         db_create_table(
             conn, current_file_suffix, fields, unique_index_columns=unique_index_columns
         )
-        sql: str = f"""
+        sql = f"""
             INSERT OR IGNORE INTO {current_file_suffix} ({columns_str})
             VALUES ({','.join(['?' for _ in columns])})
         """
-        data: List[List[str | datetime.datetime]] = [
-            [export_date] + row for row in csv_reader
+        data: List[List[str | datetime.datetime | int]] = [
+            [export_date, pim_dataset_id] + row for row in csv_reader
         ]
-        cursor = conn.cursor()
         cursor.executemany(sql, data)
         inserted_row_count = cursor.rowcount
         conn.commit()
         # add the label
         if label and inserted_row_count > 0:
             db_add_label(
-                conn, dataset_type="pim", dataset_datetime=export_date, label=label
+                conn, dataset_type="pim", dataset_id=pim_dataset_id, label=label
             )
     return inserted_row_count
 
@@ -126,9 +145,7 @@ def load_hybris_excel_to_db(
     conn.commit()
     # add the label
     if label and inserted_row_count > 0:
-        db_add_label(
-            conn, dataset_type="hybris", dataset_datetime=export_date, label=label
-        )
+        db_add_label(conn, dataset_type="hybris", dataset_id=export_date, label=label)
     return inserted_row_count
 
 
@@ -166,6 +183,7 @@ def load_docfile_into_db(
     file_path: Path,
     prefix: str,
     request_date: datetime.datetime,
+    analysis_name: str,
     config: Dict[str, Any],
     drop_table_first: bool = False,
     label: str | None = None,
@@ -179,6 +197,24 @@ def load_docfile_into_db(
     workbook: openpyxl.Workbook = openpyxl.load_workbook(
         in_memory_file, read_only=True, data_only=True
     )
+    # add the analysis to the analyses table if not present
+    db_create_table(
+        conn,
+        "analyses",
+        {
+            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "request_date": "DATETIME NOT NULL",
+            "analysis_name": "TEXT UNIQUE NOT NULL",
+        },
+        ["analysis_name"],
+    )
+    sql: str = "SELECT id FROM analyses WHERE analysis_name = ?"
+    res = cursor.execute(sql, (analysis_name,)).fetchone()
+    if not res:
+        sql = "INSERT INTO analyses (request_date, analysis_name) VALUES (?, ?) RETURNING id"
+        res = cursor.execute(sql, (request_date, analysis_name)).fetchone()
+    analysis_id: int = res[0]
+
     for sh in workbook.worksheets:
         if sh.title.lower() not in sheets:
             continue
@@ -196,11 +232,14 @@ def load_docfile_into_db(
                 : len(config_header)
             ]
             if i == start_row_header:
-                columns: List[str] = list(("request_date", *trimmed_row, "file_name"))  # type: ignore
+                columns: List[str] = list(
+                    ("request_date", "analysis_id", *trimmed_row, "file_name")
+                )  # type: ignore
                 columns_str: str = ", ".join([f"[{x}]" for x in columns])
                 extra_fields: dict[str, str] = {
                     "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-                    "request_date": "DATETIME NOT NULL",
+                    "request_date": "DATETIME NOT NULL REFERENCES analyses('request_date')",
+                    "analysis_id": "INTEGER NOT NULL REFERENCES analyses('id')",
                 }
                 required_columns: List[str] = [
                     k
@@ -213,7 +252,7 @@ def load_docfile_into_db(
                 ]
                 fields_pass1: Dict[str, str] = {
                     k: "DATETIME" if "date" in k.lower() else "TEXT"
-                    for k in columns[1:]
+                    for k in columns[2:]
                 }
                 fields_pass2: Dict[str, str] = {
                     k: f"{v} NOT NULL" if k.lower() in required_columns else v
@@ -234,7 +273,7 @@ def load_docfile_into_db(
                     fields,
                     unique_index_columns=unique_index_columns,
                 )
-                sql: str = f"""
+                sql = f"""
                     INSERT OR IGNORE INTO {table_name} ({columns_str})
                     VALUES ({','.join(['?' for _ in columns])})
                 """
@@ -242,7 +281,9 @@ def load_docfile_into_db(
             if i >= start_row_data:
                 # print(f"{i}:data: {row}")
                 if any(trimmed_row):
-                    data_row_raw = list((request_date, *trimmed_row, file_path.name))
+                    data_row_raw: List[int | float | str | datetime.datetime | None] = (
+                        list((request_date, analysis_id, *trimmed_row, file_path.name))
+                    )
                     assert len(data_row_raw) == len(columns)
                     data_row: List[str | datetime.datetime | int | float | Missing] = (
                         preprocess_doc_values(data_row_raw, columns, required_columns)
@@ -261,9 +302,7 @@ def load_docfile_into_db(
         )
     # add the label
     if label and inserted_row_count > 0:
-        db_add_label(
-            conn, dataset_type="doc", dataset_datetime=request_date, label=label
-        )
+        db_add_label(conn, dataset_type="doc", dataset_id=analysis_id, label=label)
     return total_inserted_row_count
 
 
@@ -280,8 +319,7 @@ def load_doc_analysis_date_pair(
         db_drop_tables(conn, [table_name])
     columns: Dict[str, str] = {
         "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-        "analysis_name": "TEXT NOT NULL",
-        "doc_request_date": "DATETIME NOT NULL",
+        "analysis_id": "INTEGER NOT NULL REFERENCES analyses('id')",
         "pim_export_date": "DATETIME NOT NULL",
     }
     column_names: List[str] = list(columns.keys())[1:]

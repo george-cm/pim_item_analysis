@@ -188,7 +188,7 @@ def db_create_table(
     """Create table in the database"""
     # table_name: str = normalize_name(table_name)
     fields = [f"[{column}] {column_type}" for column, column_type in columns.items()]
-    # print(f"db_create_table {fields=}")
+    print(f"db_create_table {fields=}")
     cur: sqlite3.Cursor = conn.cursor()
     sql: str = f"""
             CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(fields)})
@@ -210,10 +210,10 @@ def db_create_label_tables(conn: sqlite3.Connection) -> None:
         """
             CREATE TABLE IF NOT EXISTS labels_pim (
                 id          INTEGER  PRIMARY KEY AUTOINCREMENT,
-                export_date DATETIME NOT NULL UNIQUE,
+                dataset_id  INTEGER NOT NULL UNIQUE REFERENCES pim_datasets('id'),
                 label       TEXT
             )
-            """
+        """
     )
     conn.execute(
         """
@@ -222,16 +222,16 @@ def db_create_label_tables(conn: sqlite3.Connection) -> None:
                 export_date DATETIME NOT NULL UNIQUE,
                 label       TEXT
             )
-            """
+        """
     )
     conn.execute(
         """
             CREATE TABLE IF NOT EXISTS labels_doc (
                 id              INTEGER  PRIMARY KEY AUTOINCREMENT,
-                request_date  DATETIME NOT NULL UNIQUE,
+                analysis_id     INTEGER NOT NULL UNIQUE REFERENCES analyses('id'),
                 label           TEXT
             )
-            """
+        """
     )
 
 
@@ -385,20 +385,25 @@ def get_export_date_from_file(filepath: Path) -> datetime.datetime:
 def db_add_label(
     conn: sqlite3.Connection,
     dataset_type: Literal["pim", "hybris", "doc"],
-    dataset_datetime: datetime.datetime,
+    dataset_id: int | datetime.datetime,
     label: Optional[str],
 ) -> None:
     """Add label to the lables table. Overwrites label if it exists."""
-    date_column: str = "request_date" if dataset_type == "doc" else "export_date"
+    id_column_map = {
+        "doc": "analysis_id",
+        "pim": "dataset_id",
+        "hybris": "export_date",
+    }
+    id_column: str = id_column_map[dataset_type]
     db_create_label_tables(conn)
-    sql: LiteralString = f"""
-        INSERT INTO labels_{dataset_type} ({date_column}, label)
+    sql: str = f"""
+        INSERT INTO labels_{dataset_type} ({id_column}, label)
         VALUES (?, ?)
-        ON CONFLICT ({date_column}) DO UPDATE SET label = ?
+        ON CONFLICT ({id_column}) DO UPDATE SET label = ?
         """
     conn.execute(
         sql,
-        (dataset_datetime, label, label),
+        (dataset_id, label, label),
     )
     conn.commit()
 

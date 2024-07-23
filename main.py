@@ -17,6 +17,7 @@ from rich.console import Console
 from pim_item_analysis.analyses import doc_item_search_list
 from pim_item_analysis.cli import add_doc_analysis_date_pairs
 
+# from pim_item_analysis.db import get_export_date_from_file
 # from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
@@ -26,7 +27,6 @@ from pim_item_analysis.db import db_get_hybris_datasets
 from pim_item_analysis.db import db_get_label_for_date
 from pim_item_analysis.db import db_get_pim_datasets
 from pim_item_analysis.db import file_prefix
-from pim_item_analysis.db import get_export_date_from_file
 from pim_item_analysis.db import round_seconds
 from pim_item_analysis.loaders import load_docfile_into_db
 from pim_item_analysis.loaders import load_hybris_excel_to_db
@@ -158,6 +158,7 @@ def parser_load_doc_data(subparsers) -> None:
         type=datetime.date.fromisoformat,
         help="Date of the request. Format: YYYY-MM-DD",
     )
+    parser.add_argument("analysis_name", type=str, help="Name of the DoC analysis.")
     parser.add_argument(
         "--db_file",
         "-dbf",
@@ -256,11 +257,9 @@ def parser_doc(subparsers) -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--request_date",
-        "-rd",
+        "analysis_name",
         type=str,
-        required=False,
-        help="DoC request date for which to get list of items to search in PIM.",
+        help="DoC analysis name.",
     )
     parser.add_argument(
         "--db_file",
@@ -305,8 +304,8 @@ def doc_analysis(args) -> None:
     """DoC related commands"""
     db_file: str = args.db_file
     with db_create_connection(db_file) as conn:
-        if args.request_date:
-            item_search_list: List[str] = doc_item_search_list(conn, args.request_date)
+        if args.analysis_name:
+            item_search_list: List[str] = doc_item_search_list(conn, args.analysis_name)
             pim_search_str: str = "\n".join(item_search_list)
             pyperclip.copy(pim_search_str)
             print(pim_search_str)
@@ -451,12 +450,12 @@ def load_pim_data(args) -> None:
     input_folder = Path(args.input_folder)
 
     index_columns: Optional[List[str]]
-    label_set: bool = False
+    # label_set: bool = False
 
     with db_create_connection(db_file) as conn:
         db_create_label_tables(conn)
         for file_path in input_folder.glob("*.csv"):
-            export_date: datetime.datetime = get_export_date_from_file(file_path)
+            # export_date: datetime.datetime = get_export_date_from_file(file_path)
             current_file_suffix: str = file_prefix(file_path)
 
             if current_file_suffix == "item_availability":
@@ -491,15 +490,15 @@ def load_pim_data(args) -> None:
                 ]
             else:
                 index_columns = None
-            if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(
-                    conn, "pim", export_date
-                )
-                if existing_label == label:
-                    label = None
-                label_set = True
-            else:
-                label = None
+            # if not label_set:
+            #     existing_label: Optional[str] = db_get_label_for_date(
+            #         conn, "pim", export_date
+            #     )
+            #     if existing_label == label:
+            #         label = None
+            #     label_set = True
+            # else:
+            #     label = None
             inserted_rows_count: int = load_pimfile_to_db(
                 conn,
                 file_path,
@@ -521,8 +520,9 @@ def load_doc_data(args) -> None:
 
     db_file: str = args.db_file
     label: Optional[str] = args.label
-    label_set: bool = False
+    # label_set: bool = False
     request_date: datetime.date = args.request_date
+    analysis_name: str = args.analysis_name
 
     input_folder = Path(args.input_folder)
     print(f"{input_folder=}")
@@ -537,18 +537,19 @@ def load_doc_data(args) -> None:
                     current_file_prefix = prefix
                     break
             console.print(f"{current_file_prefix=} - {file_path.name=}")
-            if not label_set:
-                existing_label: Optional[str] = db_get_label_for_date(
-                    conn, "doc", request_date
-                )
-                if existing_label == label:
-                    label = None
-                label_set = True
+            # if not label_set:
+            #     existing_label: Optional[str] = db_get_label_for_date(
+            #         conn, "doc", request_date
+            #     )
+            #     if existing_label == label:
+            #         label = None
+            #     label_set = True
             total_inserted_rows_count: int = load_docfile_into_db(
                 conn,
                 file_path,
                 prefix=current_file_prefix,
                 request_date=request_date,  # type: ignore
+                analysis_name=analysis_name,
                 config=config,
                 drop_table_first=args.drop_tables,
                 # unique_index_columns=index_columns,
