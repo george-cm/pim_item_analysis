@@ -188,7 +188,7 @@ def db_create_table(
     """Create table in the database"""
     # table_name: str = normalize_name(table_name)
     fields = [f"[{column}] {column_type}" for column, column_type in columns.items()]
-    print(f"db_create_table {fields=}")
+    # print(f"db_create_table {fields=}")
     cur: sqlite3.Cursor = conn.cursor()
     sql: str = f"""
             CREATE TABLE IF NOT EXISTS {table_name} ({", ".join(fields)})
@@ -242,22 +242,27 @@ def db_get_pim_datasets(
     cursor: sqlite3.Cursor = conn.cursor()
     datasets: sqlite3.Cursor = cursor.execute(
         f"""
-        SELECT "left"."export_date",
-               "left"."Item count",
-               "right"."label"
-        FROM
-            (
-                SELECT DISTINCT export_date,
-                                count
-                                ("Item no.") AS "Item count"
-                FROM item_availability
-                GROUP BY export_date
-                ORDER BY export_date {'DESC' if descending else 'ASC'}
-            )
-            AS "left"
-        LEFT JOIN labels_pim AS "right"
-            ON "left"."export_date" = "right"."export_date"
-    """
+            SELECT
+                pd.id as dataset_id,
+                pd.export_date,
+                ia.item_count,
+                lp.label
+            FROM
+                pim_datasets pd
+            LEFT JOIN labels_pim lp ON
+                pd.id = lp.dataset_id
+            LEFT JOIN (
+                SELECT
+                    count(*) as item_count,
+                    dataset_id
+                FROM
+                    item_availability
+                GROUP BY
+                    dataset_id) AS ia
+            ON
+                pd.id = ia.dataset_id
+            ORDER BY pd.export_date {"DESC" if descending else "ASC"}
+        """
     )
     return list(datasets)
 
@@ -296,28 +301,45 @@ def db_get_doc_datasets(
 ) -> List[List[str | datetime.datetime | int]]:
     """Get list of DoC datasets."""
     cursor: sqlite3.Cursor = conn.cursor()
-    sql: Template = Template(
+    # sql: Template = Template(
+    #     """
+    #     SELECT "left"."request_date",
+    #         "left"."$counts_column",
+    #         "left"."Sheet Name",
+    #         "left"."File Name",
+    #         "right"."label"
+    #     FROM
+    #         (
+    #             SELECT DISTINCT
+    #                 request_date,
+    #                 count("$counts_column") AS "$counts_column",
+    #                 "$table_name" as "Sheet Name",
+    #                 "file_name" as "File Name"
+    #             FROM $table_name
+    #             GROUP BY request_date
+    #             ORDER BY request_date $order
+    #         )
+    #         AS "left"
+    #     LEFT JOIN labels_doc AS "right"
+    #         ON "left"."request_date" = "right"."request_date"
+    # """
+    # )
+    sql_template: Template = Template(
         """
-        SELECT "left"."request_date",
-            "left"."$counts_column",
-            "left"."Sheet Name",
-            "left"."File Name",
-            "right"."label"
-        FROM
-            (
-                SELECT DISTINCT
-                    request_date,
-                    count("$counts_column") AS "$counts_column",
-                    "$table_name" as "Sheet Name",
-                    "file_name" as "File Name"
-                FROM $table_name
-                GROUP BY request_date
-                ORDER BY request_date $order
-            )
-            AS "left"
-        LEFT JOIN labels_doc AS "right"
-            ON "left"."request_date" = "right"."request_date"
-    """
+            SELECT
+                a.id,
+                a.request_date,
+                count("$counts_column") AS "$counts_column",
+                "$table_name" as "Sheet Name",
+                b.file_name as "File Name",
+                a.analysis_name
+            FROM
+                "$table_name" b
+            LEFT JOIN analyses a on b.analysis_id = a.id
+            GROUP BY
+                analysis_id
+            ORDER BY a.request_date $order
+        """
     )
     all_data: List[List[str | datetime.datetime | int]] = []
     tables: Dict[str, str] = {
@@ -329,11 +351,10 @@ def db_get_doc_datasets(
     for table_name, counts_column in tables.items():
         order: str = "DESC" if descending else "ASC"
         if db_table_exists(conn, table_name):
-            datasets: sqlite3.Cursor = cursor.execute(
-                sql.substitute(
-                    table_name=table_name, counts_column=counts_column, order=order
-                )
+            sql: str = sql_template.substitute(
+                table_name=table_name, counts_column=counts_column, order=order
             )
+            datasets: List[Any] = cursor.execute(sql).fetchall()
             all_data.extend(list(datasets))
     return all_data
 
@@ -452,10 +473,68 @@ def round_seconds(precise_datetime: datetime.datetime) -> datetime.datetime:
     return adjusted_datetime.replace(microsecond=0)
 
 
+def db_create_doc_views(conn: sqlite3.Connection):
+    """Create DoC views."""
+    cursor: sqlite3.Cursor = conn.cursor()
+    view_name: str = "v_doc_cert_data_template"
+    sql: str = f"""
+        CREATE VIEW IF NOT EXISTS {view_name} AS
+        SELECT
+            *
+        FROM
+            doc_cert_data_template dcdt
+        WHERE
+            NOT (dcdt.CERTIFICATION_NUMBER = "<MISSING VALUE IN COLUMN certification_number>"
+                AND dcdt."MODULE NUMBER" = "C2")
+        UNION ALL
+        SELECT
+            dcdt."id",
+            dcdt."request_date",
+            dcdt."analysis_id",
+            (dcdt2.CERTIFICATION_NUMBER || " - C2") AS CERTIFICATION_NUMBER,
+            dcdt."MODULE NUMBER",
+            dcdt."LEGISLATION_TYPE",
+            dcdt."LEGISLATION_ID",
+            CASE
+                dcdt."CERT_ISSUE_DATE"
+            WHEN "<MISSING VALUE IN COLUMN cert_issue_date>" THEN dcdt2.CERT_ISSUE_DATE
+                ELSE dcdt.CERT_ISSUE_DATE
+            END AS CERT_ISSUE_DATE,
+            CASE
+                dcdt.CERT_EXP_DATE
+            WHEN "<MISSING VALUE IN COLUMN cert_exp_date>" THEN dcdt2.CERT_EXP_DATE
+                ELSE dcdt.CERT_EXP_DATE
+            END AS CERT_EXP_DATE,
+            CASE
+                dcdt."CERT_STANDARD_LIST"
+            WHEN "NA" THEN "N/A"
+                WHEN "na" THEN "N/A"
+                WHEN "n/a" THEN "N/A"
+                ELSE dcdt.CERT_STANDARD_LIST
+            END AS CERT_STANDARD_LIST,
+            dcdt."NB_NUMBER",
+            dcdt."MNFR_CODE_NAME",
+            dcdt."PRODUCT_NAME_CERT",
+            dcdt."file_name"
+        FROM
+            doc_cert_data_template dcdt
+        LEFT JOIN doc_cert_data_template AS dcdt2
+        ON
+            (dcdt.id - 1) = dcdt2.id
+            AND dcdt.analysis_id = dcdt2.analysis_id
+        WHERE
+            dcdt.CERTIFICATION_NUMBER = "<MISSING VALUE IN COLUMN certification_number>"
+            AND dcdt."MODULE NUMBER" = "C2"
+            AND dcdt2."MODULE NUMBER" = "B"
+    """
+    cursor.execute(sql)
+
+
 def main():
     """Main function"""
     print("This module doesn't do anything on it's own.")
 
 
 if __name__ == "__main__":
+    main()
     main()

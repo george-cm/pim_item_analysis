@@ -16,7 +16,8 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
-import maya  # type: ignore
+import dateutil
+import dateutil.parser
 import openpyxl
 from rich.console import Console
 
@@ -159,10 +160,13 @@ def preprocess_doc_values(
     columns = [name.lower() for name in columns]
     x: str | datetime.datetime | int | float | None
     for i, x in enumerate(row):
+        # print(f"Processing {columns[i]=} {x=}")
         if isinstance(x, str):
             x = x.strip()
             if "date" in columns[i].lower() and x:
+                x = x.replace(".", "/")
                 x = parse_doc_date(x)
+                # print(f"PARSED DATE={x}")
 
         if not x and columns[i] in required_columns:
             new_row.append(Missing(columns[i]))
@@ -174,8 +178,12 @@ def preprocess_doc_values(
 def parse_doc_date(date_str: str):
     """Parse the date string"""
     # date is in the format of dd.mm.yyyy
-    parsed_date: maya.MayaDT = maya.parse(date_str)
-    return parsed_date.datetime()
+    # date_str = date_str.replace(".", "/")
+    # print(f"{date_str=}")
+
+    parsed_date: datetime.datetime = dateutil.parser.parse(date_str)
+
+    return parsed_date
 
 
 def load_docfile_into_db(

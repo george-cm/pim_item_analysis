@@ -11,7 +11,7 @@ from typing import List
 from typing import Literal
 from typing import Optional
 
-import pyperclip
+import pyperclip  # type: ignore
 from rich.console import Console
 
 from pim_item_analysis.analyses import doc_item_search_list
@@ -21,6 +21,7 @@ from pim_item_analysis.cli import add_doc_analysis_date_pairs
 # from pim_item_analysis.db import db_create_table
 from pim_item_analysis.db import db_add_label
 from pim_item_analysis.db import db_create_connection
+from pim_item_analysis.db import db_create_doc_views
 from pim_item_analysis.db import db_create_label_tables
 from pim_item_analysis.db import db_get_doc_datasets
 from pim_item_analysis.db import db_get_hybris_datasets
@@ -371,6 +372,10 @@ def list_data(args) -> None:
         doc_datasets: List[List[str | datetime.datetime | int]] = db_get_doc_datasets(
             conn
         )
+
+        console.print(pim_datasets)
+        console.print(doc_datasets)
+
         header: List[str] = [
             "Dataset\nNumber",
             "Export date string",
@@ -384,15 +389,15 @@ def list_data(args) -> None:
             header,
             [
                 [
-                    i,
-                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
-                    x[0].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
-                    x[1],
-                    str(x[2] if x[2] else ""),
+                    x[0],
+                    x[1].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[1].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
+                    x[2],
+                    str(x[3] if x[3] else ""),
                 ]
                 for i, x in enumerate(pim_datasets, start=1)
             ],
-            ["right", "left", "left", "right", "left"],
+            ["right", "left", "left", "right", "left", "left"],
         )
 
         print("\nHybris data")
@@ -424,17 +429,17 @@ def list_data(args) -> None:
             header_doc,
             [
                 [
-                    i,
-                    x[0].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
-                    x[0].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
-                    x[1],
+                    x[0],
+                    x[1].strftime("%Y-%m-%dT%H:%M:%S"),  # type: ignore
+                    x[1].strftime("%Y-%m-%d %H:%M:%S"),  # type: ignore
                     x[2],
                     x[3],
-                    str(x[4] if x[4] else ""),
+                    x[4],
+                    str(x[5] if x[5] else ""),
                 ]
                 for i, x in enumerate(doc_datasets, start=1)
             ],
-            ["right", "left", "left", "right", "left"],
+            ["right", "left", "left", "right", "left", "left"],
         )
 
 
@@ -442,7 +447,6 @@ def load_pim_data(args) -> None:
     """Load data into the database"""
     current_dir: Path = Path(__file__).parent
     config: Dict[str, Any] = load_config(current_dir)
-    print(f"Current directory: {current_dir}")
     print(f"Current directory: {current_dir}")
     db_file: str = args.db_file
     label: Optional[str] = args.label
@@ -557,6 +561,7 @@ def load_doc_data(args) -> None:
             )
 
             print(f"Total inserted {total_inserted_rows_count} rows from {file_path}\n")
+        db_create_doc_views(conn)
 
 
 def load_config(config_folder: Path | str) -> Dict[str, Any]:
